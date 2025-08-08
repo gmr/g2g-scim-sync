@@ -16,17 +16,12 @@ class GoogleConfig(BaseModel):
     """Google Workspace configuration."""
 
     service_account_file: Path = Field(
-        ...,
-        description='Path to Google service account JSON file'
+        ..., description='Path to Google service account JSON file'
     )
     domain: str = Field(
-        ...,
-        description='Google Workspace domain (e.g., company.com)'
+        ..., description='Google Workspace domain (e.g., company.com)'
     )
-    groups: list[str] = Field(
-        ...,
-        description='List of Google Groups to sync'
-    )
+    groups: list[str] = Field(..., description='List of Google Groups to sync')
 
     @field_validator('service_account_file')
     @classmethod
@@ -42,25 +37,18 @@ class GoogleConfig(BaseModel):
 class GitHubConfig(BaseModel):
     """GitHub Enterprise configuration."""
 
-    enterprise_url: str = Field(
-        ...,
-        description='GitHub Enterprise base URL'
-    )
-    scim_token: str = Field(
-        ...,
-        description='GitHub SCIM API token'
-    )
-    organization: str = Field(
-        ...,
-        description='GitHub organization name'
-    )
+    enterprise_url: str = Field(..., description='GitHub Enterprise base URL')
+    scim_token: str = Field(..., description='GitHub SCIM API token')
+    organization: str = Field(..., description='GitHub organization name')
 
     @field_validator('enterprise_url')
     @classmethod
     def validate_enterprise_url(cls, v: str) -> str:
         """Validate GitHub Enterprise URL format."""
         if not v.startswith(('http://', 'https://')):
-            raise ValueError('GitHub Enterprise URL must start with http:// or https://')
+            raise ValueError(
+                'GitHub Enterprise URL must start with http:// or https://'
+            )
         return v.rstrip('/')
 
 
@@ -69,15 +57,14 @@ class SyncConfig(BaseModel):
 
     delete_suspended: bool = Field(
         default=False,
-        description='Delete suspended users instead of deactivating'
+        description='Delete suspended users instead of deactivating',
     )
     create_teams: bool = Field(
-        default=True,
-        description='Automatically create missing GitHub teams'
+        default=True, description='Automatically create missing GitHub teams'
     )
     flatten_groups: bool = Field(
         default=True,
-        description='Flatten nested Google Groups into GitHub teams'
+        description='Flatten nested Google Groups into GitHub teams',
     )
 
 
@@ -86,11 +73,10 @@ class LoggingConfig(BaseModel):
 
     level: str = Field(
         default='INFO',
-        description='Logging level (DEBUG, INFO, WARNING, ERROR)'
+        description='Logging level (DEBUG, INFO, WARNING, ERROR)',
     )
     file: str | None = Field(
-        default=None,
-        description='Optional log file path'
+        default=None, description='Optional log file path'
     )
 
     @field_validator('level')

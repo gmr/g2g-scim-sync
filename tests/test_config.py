@@ -26,7 +26,7 @@ class TestGoogleConfig:
         config = GoogleConfig(
             service_account_file=service_file,
             domain='company.com',
-            groups=['Engineering', 'Sales']
+            groups=['Engineering', 'Sales'],
         )
 
         assert config.service_account_file == service_file
@@ -39,7 +39,7 @@ class TestGoogleConfig:
             GoogleConfig(
                 service_account_file=Path('/nonexistent/file.json'),
                 domain='company.com',
-                groups=['Engineering']
+                groups=['Engineering'],
             )
 
     def test_service_account_file_is_directory(self, tmp_path: Path) -> None:
@@ -53,7 +53,7 @@ class TestGoogleConfig:
             GoogleConfig(
                 service_account_file=directory,
                 domain='company.com',
-                groups=['Engineering']
+                groups=['Engineering'],
             )
 
 
@@ -65,7 +65,7 @@ class TestGitHubConfig:
         config = GitHubConfig(
             enterprise_url='https://github.company.com',
             scim_token='ghes_token_here',  # noqa: S106
-            organization='company-org'
+            organization='company-org',
         )
 
         assert config.enterprise_url == 'https://github.company.com'
@@ -77,7 +77,7 @@ class TestGitHubConfig:
         config = GitHubConfig(
             enterprise_url='https://github.company.com/',
             scim_token='token',  # noqa: S106
-            organization='org'
+            organization='org',
         )
 
         assert config.enterprise_url == 'https://github.company.com'
@@ -90,7 +90,7 @@ class TestGitHubConfig:
             GitHubConfig(
                 enterprise_url='ftp://github.company.com',
                 scim_token='token',  # noqa: S106
-                organization='org'
+                organization='org',
             )
 
 
@@ -108,9 +108,7 @@ class TestSyncConfig:
     def test_custom_values(self) -> None:
         """Test custom configuration values."""
         config = SyncConfig(
-            delete_suspended=True,
-            create_teams=False,
-            flatten_groups=False
+            delete_suspended=True, create_teams=False, flatten_groups=False
         )
 
         assert config.delete_suspended is True
@@ -130,10 +128,7 @@ class TestLoggingConfig:
 
     def test_custom_values(self) -> None:
         """Test custom logging configuration."""
-        config = LoggingConfig(
-            level='DEBUG',
-            file='app.log'
-        )
+        config = LoggingConfig(level='DEBUG', file='app.log')
 
         assert config.level == 'DEBUG'
         assert config.file == 'app.log'
@@ -161,22 +156,19 @@ class TestConfig:
             'google': {
                 'service_account_file': str(service_file),
                 'domain': 'company.com',
-                'groups': ['Engineering', 'Sales']
+                'groups': ['Engineering', 'Sales'],
             },
             'github': {
                 'enterprise_url': 'https://github.company.com',
                 'scim_token': 'token',  # noqa: S106
-                'organization': 'org'
+                'organization': 'org',
             },
             'sync': {
                 'delete_suspended': False,
                 'create_teams': True,
-                'flatten_groups': True
+                'flatten_groups': True,
             },
-            'logging': {
-                'level': 'INFO',
-                'file': 'app.log'
-            }
+            'logging': {'level': 'INFO', 'file': 'app.log'},
         }
 
     def test_from_dict(self, tmp_path: Path) -> None:
@@ -241,13 +233,13 @@ file = "app.log"
             'google': {
                 'service_account_file': str(service_file),
                 'domain': 'company.com',
-                'groups': ['Engineering']
+                'groups': ['Engineering'],
             },
             'github': {
                 'enterprise_url': 'https://github.company.com',
                 'scim_token': 'token',  # noqa: S106
-                'organization': 'org'
-            }
+                'organization': 'org',
+            },
         }
 
         config = Config.from_dict(minimal_config)

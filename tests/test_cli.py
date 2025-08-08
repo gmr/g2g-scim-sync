@@ -30,13 +30,17 @@ class TestParseArgs:
 
     def test_all_arguments(self) -> None:
         """Test parsing all command line arguments."""
-        args = cli.parse_args([
-            '--config', 'config.toml',
-            '--dry-run',
-            '--delete-suspended',
-            '--groups', 'Engineering,Sales',
-            '--verbose'
-        ])
+        args = cli.parse_args(
+            [
+                '--config',
+                'config.toml',
+                '--dry-run',
+                '--delete-suspended',
+                '--groups',
+                'Engineering,Sales',
+                '--verbose',
+            ]
+        )
 
         assert args.config == Path('config.toml')
         assert args.dry_run is True
@@ -58,21 +62,21 @@ class TestSetupLogging:
         service_file = tmp_path / 'service.json'
         service_file.write_text('{}')
 
-        config = Config.from_dict({
-            'google': {
-                'service_account_file': str(service_file),
-                'domain': 'test.com',
-                'groups': ['test']
-            },
-            'github': {
-                'enterprise_url': 'https://github.test.com',
-                'scim_token': 'token',
-                'organization': 'test'
-            },
-            'logging': {
-                'level': 'DEBUG'
+        config = Config.from_dict(
+            {
+                'google': {
+                    'service_account_file': str(service_file),
+                    'domain': 'test.com',
+                    'groups': ['test'],
+                },
+                'github': {
+                    'enterprise_url': 'https://github.test.com',
+                    'scim_token': 'token',
+                    'organization': 'test',
+                },
+                'logging': {'level': 'DEBUG'},
             }
-        })
+        )
 
         # Clear any existing handlers
         logger = logging.getLogger()
@@ -91,22 +95,21 @@ class TestSetupLogging:
         service_file.write_text('{}')
         log_file = tmp_path / 'test.log'
 
-        config = Config.from_dict({
-            'google': {
-                'service_account_file': str(service_file),
-                'domain': 'test.com',
-                'groups': ['test']
-            },
-            'github': {
-                'enterprise_url': 'https://github.test.com',
-                'scim_token': 'token',
-                'organization': 'test'
-            },
-            'logging': {
-                'level': 'INFO',
-                'file': str(log_file)
+        config = Config.from_dict(
+            {
+                'google': {
+                    'service_account_file': str(service_file),
+                    'domain': 'test.com',
+                    'groups': ['test'],
+                },
+                'github': {
+                    'enterprise_url': 'https://github.test.com',
+                    'scim_token': 'token',
+                    'organization': 'test',
+                },
+                'logging': {'level': 'INFO', 'file': str(log_file)},
             }
-        })
+        )
 
         # Clear any existing handlers
         logger = logging.getLogger()
@@ -149,13 +152,21 @@ organization = "test"
 
     @mock.patch('sys.argv')
     @mock.patch('g2g_scim_sync.cli.setup_logging')
-    def test_main_success(self, mock_setup_logging: mock.Mock,
-                         mock_argv: mock.Mock, tmp_path: Path) -> None:
+    def test_main_success(
+        self,
+        mock_setup_logging: mock.Mock,
+        mock_argv: mock.Mock,
+        tmp_path: Path,
+    ) -> None:
         """Test successful main execution."""
         config_file = self.create_test_config_file(tmp_path)
-        mock_argv.__getitem__ = mock.Mock(side_effect=lambda x: [
-            'g2g-scim-sync', '--config', str(config_file)
-        ][x])
+        mock_argv.__getitem__ = mock.Mock(
+            side_effect=lambda x: [
+                'g2g-scim-sync',
+                '--config',
+                str(config_file),
+            ][x]
+        )
         mock_argv.__len__ = mock.Mock(return_value=3)
 
         with mock.patch('sys.exit') as mock_exit:
@@ -168,9 +179,12 @@ organization = "test"
         """Test main handles KeyboardInterrupt."""
         mock_parse_args.side_effect = KeyboardInterrupt()
 
-        with mock.patch('sys.exit') as mock_exit, \
-             mock.patch('builtins.print') as mock_print:
-            cli.main()
+        with (
+            mock.patch('sys.exit', side_effect=SystemExit) as mock_exit,
+            mock.patch('builtins.print') as mock_print,
+        ):
+            with pytest.raises(SystemExit):
+                cli.main()
             mock_exit.assert_called_with(130)
             mock_print.assert_called_once_with(
                 'Interrupted by user', file=sys.stderr
@@ -184,9 +198,12 @@ organization = "test"
         mock_args.config = Path('/nonexistent/config.toml')
         mock_parse_args.return_value = mock_args
 
-        with mock.patch('sys.exit') as mock_exit, \
-             mock.patch('builtins.print') as mock_print:
-            cli.main()
+        with (
+            mock.patch('sys.exit', side_effect=SystemExit) as mock_exit,
+            mock.patch('builtins.print') as mock_print,
+        ):
+            with pytest.raises(SystemExit):
+                cli.main()
             mock_exit.assert_called_with(1)
 
             # Check error message contains file not found
@@ -222,5 +239,6 @@ organization = "test"
             assert config_arg.logging.level == 'DEBUG'  # verbose override
             assert config_arg.sync.delete_suspended is True  # CLI override
             assert config_arg.google.groups == [
-                'Sales', 'Marketing'
+                'Sales',
+                'Marketing',
             ]  # CLI override
