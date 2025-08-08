@@ -181,6 +181,10 @@ class TestSyncEngine:
 
         self.mock_google_client.get_all_users_in_ous.return_value = []
         self.mock_github_client.get_users.return_value = []
+        self.mock_github_client.get_groups.return_value = []
+        self.mock_google_client.get_ou.return_value = self.create_google_ou(
+            'Custom Department', '/Custom/Department'
+        )
 
         await self.engine.synchronize(ou_paths=custom_ous)
 
