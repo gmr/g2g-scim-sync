@@ -129,21 +129,6 @@ class SyncOperation(BaseModel):
         )
 
 
-class SyncResult(BaseModel):
-    """Result of a sync operation."""
-
-    operation: SyncOperation = Field(
-        ..., description='The operation performed'
-    )
-    success: bool = Field(..., description='Success status')
-    error: Optional[str] = Field(
-        default=None, description='Error message if failed'
-    )
-    timestamp: datetime = Field(
-        default_factory=datetime.now, description='Operation timestamp'
-    )
-
-
 class SyncSummary(BaseModel):
     """Summary of a complete sync run."""
 
@@ -169,3 +154,127 @@ class SyncSummary(BaseModel):
         if self.total_operations == 0:
             return 100.0
         return (self.successful_operations / self.total_operations) * 100.0
+
+
+class SyncConfig(BaseModel):
+    """Configuration for synchronization operations."""
+
+    groups: list[str] = Field(
+        default_factory=list, description='Google Groups to synchronize'
+    )
+    sync_teams: bool = Field(
+        default=True, description='Enable team synchronization'
+    )
+    include_suspended: bool = Field(
+        default=False, description='Include suspended users'
+    )
+    org_unit_filters: Optional[list[str]] = Field(
+        default=None, description='Organizational unit path filters'
+    )
+    delete_suspended: bool = Field(
+        default=False,
+        description='Delete suspended users instead of suspending',
+    )
+
+
+class SyncStats(BaseModel):
+    """Statistics tracking for synchronization operations."""
+
+    users_skipped: int = Field(
+        default=0, description='Users skipped by filters'
+    )
+    users_to_create: int = Field(default=0, description='Users to be created')
+    users_to_update: int = Field(default=0, description='Users to be updated')
+    users_to_suspend: int = Field(
+        default=0, description='Users to be suspended'
+    )
+    users_up_to_date: int = Field(
+        default=0, description='Users already current'
+    )
+    users_created: int = Field(
+        default=0, description='Users successfully created'
+    )
+    users_updated: int = Field(
+        default=0, description='Users successfully updated'
+    )
+    users_suspended: int = Field(
+        default=0, description='Users successfully suspended'
+    )
+    users_failed: int = Field(default=0, description='User operations failed')
+
+    teams_to_create: int = Field(default=0, description='Teams to be created')
+    teams_to_update: int = Field(default=0, description='Teams to be updated')
+    teams_up_to_date: int = Field(
+        default=0, description='Teams already current'
+    )
+    teams_created: int = Field(
+        default=0, description='Teams successfully created'
+    )
+    teams_updated: int = Field(
+        default=0, description='Teams successfully updated'
+    )
+    teams_failed: int = Field(default=0, description='Team operations failed')
+
+    def __str__(self: SyncStats) -> str:
+        """String representation of sync statistics."""
+        return (
+            f'Users: {self.users_created} created, '
+            f'{self.users_updated} updated, '
+            f'{self.users_suspended} suspended, {self.users_failed} failed | '
+            f'Teams: {self.teams_created} created, '
+            f'{self.teams_updated} updated, {self.teams_failed} failed'
+        )
+
+
+class UserDiff(BaseModel):
+    """Represents differences for a user sync operation."""
+
+    action: str = Field(
+        ..., description='Action to perform (create/update/suspend)'
+    )
+    google_user: Optional[GoogleUser] = Field(
+        default=None, description='Source Google user'
+    )
+    existing_scim_user: Optional[ScimUser] = Field(
+        default=None, description='Existing GitHub SCIM user'
+    )
+    target_scim_user: Optional[ScimUser] = Field(
+        default=None, description='Target SCIM user state'
+    )
+
+
+class TeamDiff(BaseModel):
+    """Represents differences for a team sync operation."""
+
+    action: str = Field(..., description='Action to perform (create/update)')
+    google_group: Optional[GoogleGroup] = Field(
+        default=None, description='Source Google group'
+    )
+    existing_team: Optional[GitHubTeam] = Field(
+        default=None, description='Existing GitHub team'
+    )
+    target_team: Optional[GitHubTeam] = Field(
+        default=None, description='Target team state'
+    )
+
+
+class SyncResult(BaseModel):
+    """Enhanced sync result with detailed diff information."""
+
+    success: bool = Field(..., description='Overall success status')
+    user_diffs: list[UserDiff] = Field(
+        default_factory=list, description='User differences found'
+    )
+    team_diffs: list[TeamDiff] = Field(
+        default_factory=list, description='Team differences found'
+    )
+    stats: SyncStats = Field(
+        default_factory=SyncStats, description='Sync statistics'
+    )
+    error: Optional[str] = Field(
+        default=None, description='Error message if failed'
+    )
+    dry_run: bool = Field(default=False, description='Was this a dry run')
+    timestamp: datetime = Field(
+        default_factory=datetime.now, description='Sync completion timestamp'
+    )
