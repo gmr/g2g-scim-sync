@@ -136,7 +136,7 @@ class TestMain:
         service_file.write_text('{}')
 
         config_file = tmp_path / 'config.toml'
-        config_content = f'''
+        config_content = f"""
 [google]
 service_account_file = "{service_file}"
 domain = "test.com"
@@ -146,7 +146,7 @@ groups = ["Engineering"]
 enterprise_url = "https://github.test.com"
 scim_token = "token"
 organization = "test"
-'''
+"""
         config_file.write_text(config_content)
         return config_file
 

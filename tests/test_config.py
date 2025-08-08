@@ -188,7 +188,7 @@ class TestConfig:
 
         # Create TOML config file
         config_file = tmp_path / 'config.toml'
-        config_content = f'''
+        config_content = f"""
 [google]
 service_account_file = "{service_file}"
 domain = "company.com"
@@ -207,7 +207,7 @@ flatten_groups = true
 [logging]
 level = "INFO"
 file = "app.log"
-'''
+"""
         config_file.write_text(config_content)
 
         config = Config.from_file(config_file)

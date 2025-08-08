@@ -4,7 +4,7 @@ build-backend = 'hatchling.build'
 
 [project]
 name = 'g2g-scim-sync'
-dynamic = ['version']
+version = '1.0.0'
 description = 'Google Workspace to GitHub Enterprise SCIM synchronization tool'
 authors = [
     {name = 'Gavin M. Roy', email = 'gavinr@aweber.com'},
@@ -34,6 +34,7 @@ classifiers = [
     'Typing :: Typed',
 ]
 dependencies = [
+    'email-validator>=2.0.0',
     'google-api-python-client>=2.0.0',
     'google-auth>=2.0.0',
     'httpx>=0.27.0',
@@ -62,9 +63,8 @@ Documentation = 'https://github.com/gmr/g2g-scim-sync'
 Repository = 'https://github.com/gmr/g2g-scim-sync'
 'Bug Tracker' = 'https://github.com/gmr/g2g-scim-sync/issues'
 
-[tool.hatch.version]
-path = 'VERSION'
-pattern = '^(?P<version>.+)$'
+[tool.hatch.build.force-include]
+"src/g2g_scim_sync/py.typed" = "g2g_scim_sync/py.typed"
 
 [tool.hatch.build.targets.wheel]
 packages = ['src/g2g_scim_sync']
@@ -118,4 +118,7 @@ docstring-code-format = true
 docstring-code-line-length = 40
 
 [tool.ruff.lint.per-file-ignores]
-'tests/*' = ['S101']  # Use of assert detected
+'tests/*' = [
+    'ANN101',  # Missing type annotation for `self` in method
+    'S101',    # Use of assert detected
+]
