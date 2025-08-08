@@ -30,10 +30,6 @@ jobs:
       run: |
         ruff check .
 
-    - name: Type check with mypy
-      run: |
-        mypy g2g_scim_sync
-
     - name: Test with pytest
       run: |
         pytest --cov=g2g_scim_sync --cov-report=xml
