@@ -25,6 +25,7 @@ class GoogleWorkspaceClient:
         self: GoogleWorkspaceClient,
         service_account_file: Path,
         domain: str,
+        subject_email: str,
         scopes: Optional[list[str]] = None,
     ) -> None:
         """Initialize the Google Workspace client.
@@ -32,12 +33,14 @@ class GoogleWorkspaceClient:
         Args:
             service_account_file: Path to service account JSON file
             domain: Google Workspace domain (e.g., company.com)
+            subject_email: Admin user email to impersonate
             scopes: OAuth scopes (defaults to read-only admin scopes)
         """
         self.service_account_file = service_account_file
         self.domain = domain
+        self.subject_email = subject_email
         self.scopes = scopes or [
-            'https://www.googleapis.com/auth/admin.directory.user.readonly',
+            'https://www.googleapis.com/auth/admin.directory.user',
             'https://www.googleapis.com/auth/admin.directory.orgunit.readonly',
         ]
         self._admin_service: Optional[Resource] = None
@@ -56,12 +59,22 @@ class GoogleWorkspaceClient:
                 str(self.service_account_file), scopes=self.scopes
             )
 
-            # Refresh credentials if needed
-            if not credentials.valid:
-                credentials.refresh(Request())
+            # Impersonate the admin user for domain-wide delegation
+            delegated_credentials = credentials.with_subject(
+                self.subject_email
+            )
 
-            service = build('admin', 'directory_v1', credentials=credentials)
-            logger.info('Successfully initialized Google Admin SDK client')
+            # Refresh credentials if needed
+            if not delegated_credentials.valid:
+                delegated_credentials.refresh(Request())
+
+            service = build(
+                'admin', 'directory_v1', credentials=delegated_credentials
+            )
+            logger.info(
+                f'Google Admin SDK client initialized with subject: '
+                f'{self.subject_email}'
+            )
             return service
 
         except (GoogleAuthError, FileNotFoundError, ValueError) as e:
@@ -94,9 +107,9 @@ class GoogleWorkspaceClient:
             while True:
                 # Build request parameters for users in the OU
                 request_params = {
-                    'customer': 'my_customer',
+                    'domain': self.domain,
                     'maxResults': 500,
-                    'query': f'orgUnitPath="{ou_path}"',
+                    'query': f"orgUnitPath='{ou_path}'",
                 }
                 if page_token:
                     request_params['pageToken'] = page_token

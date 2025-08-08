@@ -49,6 +49,7 @@ async def run_sync(config: Config, dry_run: bool) -> None:
         google_client = GoogleWorkspaceClient(
             service_account_file=config.google.service_account_file,
             domain=config.google.domain,
+            subject_email=config.google.subject_email,
         )
         github_client = GitHubScimClient(
             enterprise_url=config.github.enterprise_url,

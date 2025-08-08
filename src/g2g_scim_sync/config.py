@@ -25,6 +25,10 @@ class GoogleConfig(BaseModel):
         ...,
         description='List of Google Workspace OU paths to sync',
     )
+    subject_email: str = Field(
+        ...,
+        description='Admin user email to impersonate for domain delegation',
+    )
 
     @field_validator('service_account_file')
     @classmethod

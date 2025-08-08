@@ -57,18 +57,20 @@ This step is crucial for accessing Google Workspace data:
 5. Enter the **Client ID** from step 1
 6. Add the following OAuth scopes (comma-separated):
    ```
-   https://www.googleapis.com/auth/admin.directory.user.readonly,https://www.googleapis.com/auth/admin.directory.orgunit.readonly
+   https://www.googleapis.com/auth/admin.directory.user,https://www.googleapis.com/auth/admin.directory.orgunit.readonly
    ```
 7. Click **Authorize**
 
-### 6. Enable Subject Impersonation (Optional but Recommended)
+### 6. Enable Subject Impersonation (Required)
 
-To use a specific admin user for API calls:
+For domain-wide delegation to work, the service account must impersonate an admin user:
 
-1. In your service account configuration, note that you may need to impersonate an admin user
-2. Ensure the admin user has the following roles:
+1. Choose an admin user in your Google Workspace domain who has the following roles:
    - **Users Reader** (to read user data)
    - **Organizational Units Reader** (to read OU structure and data)
+   - **Super Admin** (or sufficient permissions to query users in organizational units)
+2. You will use this admin user's email address in your configuration file
+3. The service account will impersonate this user when making API calls
 
 ## Security Best Practices
 
@@ -83,7 +85,7 @@ To use a specific admin user for API calls:
 ### Access Control
 - Use the principle of least privilege
 - Only grant the minimum required scopes:
-  - `https://www.googleapis.com/auth/admin.directory.user.readonly`
+  - `https://www.googleapis.com/auth/admin.directory.user`
   - `https://www.googleapis.com/auth/admin.directory.orgunit.readonly`
 - Consider creating a dedicated admin user for API access
 
@@ -125,6 +127,9 @@ domain = "yourcompany.com"
 
 # List of Google Workspace Organizational Unit paths to synchronize
 organizational_units = ["/Engineering", "/Sales", "/Marketing"]
+
+# Admin user email to impersonate for domain-wide delegation (REQUIRED)
+subject_email = "admin@yourcompany.com"
 ```
 
 ## Testing Your Setup
