@@ -21,11 +21,16 @@ class GoogleConfig(BaseModel):
     domain: str = Field(
         ..., description='Google Workspace domain (e.g., company.com)'
     )
-    groups: list[str] = Field(..., description='List of Google Groups to sync')
+    organizational_units: list[str] = Field(
+        ...,
+        description='List of Google Workspace OU paths to sync',
+    )
 
     @field_validator('service_account_file')
     @classmethod
-    def validate_service_account_file(cls, v: Path) -> Path:
+    def validate_service_account_file(
+        cls: type['GoogleConfig'], v: Path
+    ) -> Path:
         """Validate that service account file exists."""
         if not v.exists():
             raise ValueError(f'Service account file not found: {v}')
@@ -43,7 +48,7 @@ class GitHubConfig(BaseModel):
 
     @field_validator('enterprise_url')
     @classmethod
-    def validate_enterprise_url(cls, v: str) -> str:
+    def validate_enterprise_url(cls: type['GitHubConfig'], v: str) -> str:
         """Validate GitHub Enterprise URL format."""
         if not v.startswith(('http://', 'https://')):
             raise ValueError(
@@ -62,9 +67,9 @@ class SyncConfig(BaseModel):
     create_teams: bool = Field(
         default=True, description='Automatically create missing GitHub teams'
     )
-    flatten_groups: bool = Field(
+    flatten_ous: bool = Field(
         default=True,
-        description='Flatten nested Google Groups into GitHub teams',
+        description='Flatten nested Google OUs into GitHub teams',
     )
 
 
@@ -81,7 +86,7 @@ class LoggingConfig(BaseModel):
 
     @field_validator('level')
     @classmethod
-    def validate_level(cls, v: str) -> str:
+    def validate_level(cls: type['LoggingConfig'], v: str) -> str:
         """Validate logging level."""
         valid_levels = {'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'}
         level_upper = v.upper()
@@ -101,7 +106,7 @@ class Config(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
     @classmethod
-    def from_file(cls, path: Path) -> 'Config':
+    def from_file(cls: type['Config'], path: Path) -> 'Config':
         """Load configuration from TOML file."""
         if not path.exists():
             raise FileNotFoundError(f'Configuration file not found: {path}')
@@ -112,6 +117,6 @@ class Config(BaseModel):
         return cls.model_validate(data)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> 'Config':
+    def from_dict(cls: type['Config'], data: dict[str, Any]) -> 'Config':
         """Create configuration from dictionary."""
         return cls.model_validate(data)

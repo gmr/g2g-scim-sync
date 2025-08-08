@@ -25,7 +25,7 @@ class TestParseArgs:
         assert args.config == Path('config.toml')
         assert args.dry_run is False
         assert args.delete_suspended is False
-        assert args.groups is None
+        assert args.organizational_units is None
         assert args.verbose is False
 
     def test_all_arguments(self) -> None:
@@ -36,8 +36,8 @@ class TestParseArgs:
                 'config.toml',
                 '--dry-run',
                 '--delete-suspended',
-                '--groups',
-                'Engineering,Sales',
+                '--organizational-units',
+                '/Engineering,/Sales',
                 '--verbose',
             ]
         )
@@ -45,7 +45,7 @@ class TestParseArgs:
         assert args.config == Path('config.toml')
         assert args.dry_run is True
         assert args.delete_suspended is True
-        assert args.groups == 'Engineering,Sales'
+        assert args.organizational_units == '/Engineering,/Sales'
         assert args.verbose is True
 
     def test_short_verbose_flag(self) -> None:
@@ -67,7 +67,7 @@ class TestSetupLogging:
                 'google': {
                     'service_account_file': str(service_file),
                     'domain': 'test.com',
-                    'groups': ['test'],
+                    'organizational_units': ['/Engineering'],
                 },
                 'github': {
                     'enterprise_url': 'https://github.test.com',
@@ -100,7 +100,7 @@ class TestSetupLogging:
                 'google': {
                     'service_account_file': str(service_file),
                     'domain': 'test.com',
-                    'groups': ['test'],
+                    'organizational_units': ['/Engineering'],
                 },
                 'github': {
                     'enterprise_url': 'https://github.test.com',
@@ -140,7 +140,7 @@ class TestMain:
 [google]
 service_account_file = "{service_file}"
 domain = "test.com"
-groups = ["Engineering"]
+organizational_units = ["/Engineering"]
 
 [github]
 enterprise_url = "https://github.test.com"
@@ -169,10 +169,14 @@ organization = "test"
         )
         mock_argv.__len__ = mock.Mock(return_value=3)
 
-        with mock.patch('sys.exit') as mock_exit:
+        with (
+            mock.patch('sys.exit') as mock_exit,
+            mock.patch('g2g_scim_sync.cli.run_sync') as mock_run_sync,
+        ):
             cli.main()
             mock_exit.assert_called_once_with(0)
             mock_setup_logging.assert_called_once()
+            mock_run_sync.assert_called_once()
 
     @mock.patch('g2g_scim_sync.cli.parse_args')
     def test_main_keyboard_interrupt(self, mock_parse_args: mock.Mock) -> None:
@@ -226,7 +230,7 @@ organization = "test"
         mock_args.config = config_file
         mock_args.verbose = True
         mock_args.delete_suspended = True
-        mock_args.groups = 'Sales,Marketing'
+        mock_args.organizational_units = '/Sales,/Marketing'
         mock_args.dry_run = False
         mock_parse_args.return_value = mock_args
 
@@ -238,7 +242,7 @@ organization = "test"
             config_arg = mock_setup_logging.call_args[0][0]
             assert config_arg.logging.level == 'DEBUG'  # verbose override
             assert config_arg.sync.delete_suspended is True  # CLI override
-            assert config_arg.google.groups == [
-                'Sales',
-                'Marketing',
+            assert config_arg.google.organizational_units == [
+                '/Sales',
+                '/Marketing',
             ]  # CLI override

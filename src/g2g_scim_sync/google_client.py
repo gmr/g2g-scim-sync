@@ -13,13 +13,13 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import Resource, build
 from googleapiclient.errors import HttpError
 
-from g2g_scim_sync.models import GoogleGroup, GoogleUser
+from g2g_scim_sync.models import GoogleOU, GoogleUser
 
 logger = logging.getLogger(__name__)
 
 
 class GoogleWorkspaceClient:
-    """Google Workspace Admin SDK client for fetching users and groups."""
+    """Google Workspace Admin SDK client for users and OUs."""
 
     def __init__(
         self: GoogleWorkspaceClient,
@@ -38,7 +38,7 @@ class GoogleWorkspaceClient:
         self.domain = domain
         self.scopes = scopes or [
             'https://www.googleapis.com/auth/admin.directory.user.readonly',
-            'https://www.googleapis.com/auth/admin.directory.group.readonly',
+            'https://www.googleapis.com/auth/admin.directory.orgunit.readonly',
         ]
         self._admin_service: Optional[Resource] = None
 
@@ -83,187 +83,146 @@ class GoogleWorkspaceClient:
             logger.error(f'Error fetching user {user_email}: {e}')
             raise
 
-    async def get_users_in_group(
-        self: GoogleWorkspaceClient, group_email: str
+    async def get_users_in_ou(
+        self: GoogleWorkspaceClient, ou_path: str
     ) -> list[GoogleUser]:
-        """Get all users that are members of a specific group."""
+        """Get all users in a specific Organizational Unit."""
         users = []
         page_token = None
 
         try:
             while True:
-                # Get group members
-                request = self.admin_service.members().list(
-                    groupKey=group_email, pageToken=page_token, maxResults=200
+                # Build request parameters for users in the OU
+                request_params = {
+                    'customer': 'my_customer',
+                    'maxResults': 500,
+                    'query': f'orgUnitPath="{ou_path}"',
+                }
+                if page_token:
+                    request_params['pageToken'] = page_token
+
+                result = (
+                    self.admin_service.users().list(**request_params).execute()
                 )
-                result = request.execute()
 
-                members = result.get('members', [])
+                user_list = result.get('users', [])
 
-                # Filter to only USER members and fetch their details
-                for member in members:
-                    if member.get('type') == 'USER':
-                        try:
-                            user = await self.get_user(member['email'])
-                            users.append(user)
-                        except ValueError:
-                            # User not found, skip
-                            logger.warning(
-                                f'Skipping missing user: {member["email"]}'
-                            )
-                            continue
+                # Parse user data directly
+                for user_data in user_list:
+                    try:
+                        user = self._parse_user(user_data)
+                        users.append(user)
+                    except (ValueError, KeyError) as e:
+                        logger.warning(f'Skipping invalid user: {e}')
+                        continue
 
                 page_token = result.get('nextPageToken')
                 if not page_token:
                     break
 
-            logger.info(f'Found {len(users)} users in group {group_email}')
+            logger.info(f'Found {len(users)} users in OU {ou_path}')
             return users
 
         except HttpError as e:
             if e.resp.status == 404:
-                raise ValueError(f'Group not found: {group_email}') from e
-            logger.error(f'Error fetching users in group {group_email}: {e}')
+                raise ValueError(f'OU not found: {ou_path}') from e
+            logger.error(f'Error fetching users in OU {ou_path}: {e}')
             raise
 
-    async def get_group(
-        self: GoogleWorkspaceClient, group_email: str
-    ) -> GoogleGroup:
-        """Get a single group by email address."""
+    async def get_ou(self: GoogleWorkspaceClient, ou_path: str) -> GoogleOU:
+        """Get a single Organizational Unit by path."""
         try:
             result = (
-                self.admin_service.groups().get(groupKey=group_email).execute()
+                self.admin_service.orgunits()
+                .get(customerId='my_customer', orgUnitPath=ou_path)
+                .execute()
             )
 
-            # Get member emails
-            member_emails = await self._get_group_member_emails(group_email)
+            # Get user emails in this OU
+            users = await self.get_users_in_ou(ou_path)
+            user_emails = [user.primary_email for user in users]
 
-            return GoogleGroup(
-                id=result['id'],
-                name=result['name'],
-                email=result['email'],
+            # Extract name from path (last component)
+            name = (
+                ou_path.rstrip('/').split('/')[-1]
+                if ou_path != '/'
+                else 'Root'
+            )
+
+            return GoogleOU(
+                org_unit_path=result['orgUnitPath'],
+                name=name,
                 description=result.get('description'),
-                direct_members_count=result.get('directMembersCount', 0),
-                member_emails=member_emails,
+                parent_org_unit_path=result.get('parentOrgUnitPath'),
+                user_count=len(user_emails),
+                user_emails=user_emails,
             )
         except HttpError as e:
             if e.resp.status == 404:
-                raise ValueError(f'Group not found: {group_email}') from e
-            logger.error(f'Error fetching group {group_email}: {e}')
+                raise ValueError(f'OU not found: {ou_path}') from e
+            logger.error(f'Error fetching OU {ou_path}: {e}')
             raise
 
-    async def get_nested_groups(
-        self: GoogleWorkspaceClient, group_email: str
-    ) -> list[GoogleGroup]:
-        """Get all nested groups within a parent group."""
-        nested_groups = []
-        page_token = None
-
+    async def get_child_ous(
+        self: GoogleWorkspaceClient, parent_ou_path: str
+    ) -> list[GoogleOU]:
+        """Get all child OUs within a parent OU."""
         try:
-            while True:
-                request = self.admin_service.members().list(
-                    groupKey=group_email, pageToken=page_token, maxResults=200
-                )
-                result = request.execute()
+            result = (
+                self.admin_service.orgunits()
+                .list(customerId='my_customer', orgUnitPath=parent_ou_path)
+                .execute()
+            )
 
-                members = result.get('members', [])
+            child_ous = []
+            org_units = result.get('organizationUnits', [])
 
-                # Find GROUP members and fetch their details
-                for member in members:
-                    if member.get('type') == 'GROUP':
-                        try:
-                            nested_group = await self.get_group(
-                                member['email']
-                            )
-                            nested_groups.append(nested_group)
-
-                            # Recursively get nested groups
-                            sub_nested = await self.get_nested_groups(
-                                member['email']
-                            )
-                            nested_groups.extend(sub_nested)
-                        except ValueError:
-                            # Group not found, skip
-                            logger.warning(
-                                f'Skipping missing group: {member["email"]}'
-                            )
-                            continue
-
-                page_token = result.get('nextPageToken')
-                if not page_token:
-                    break
+            for ou_data in org_units:
+                # Skip the parent OU itself
+                if ou_data['orgUnitPath'] != parent_ou_path:
+                    ou = await self.get_ou(ou_data['orgUnitPath'])
+                    child_ous.append(ou)
 
             logger.info(
-                f'Found {len(nested_groups)} nested groups in {group_email}'
+                f'Found {len(child_ous)} child OUs in {parent_ou_path}'
             )
-            return nested_groups
+            return child_ous
 
         except HttpError as e:
-            logger.error(
-                f'Error fetching nested groups for {group_email}: {e}'
-            )
+            logger.error(f'Error fetching child OUs for {parent_ou_path}: {e}')
             raise
 
-    async def get_all_users_in_groups(
-        self: GoogleWorkspaceClient, group_emails: list[str]
+    async def get_all_users_in_ous(
+        self: GoogleWorkspaceClient, ou_paths: list[str]
     ) -> list[GoogleUser]:
-        """Get all users across multiple groups (including nested)."""
+        """Get all users across multiple OUs (including child OUs)."""
         all_users = []
         seen_emails = set()
 
-        for group_email in group_emails:
+        for ou_path in ou_paths:
             try:
-                # Get direct users in this group
-                users = await self.get_users_in_group(group_email)
+                # Get direct users in this OU
+                users = await self.get_users_in_ou(ou_path)
                 for user in users:
                     if user.primary_email not in seen_emails:
                         all_users.append(user)
                         seen_emails.add(user.primary_email)
 
-                # Get users in nested groups
-                nested_groups = await self.get_nested_groups(group_email)
-                for nested_group in nested_groups:
-                    users = await self.get_users_in_group(nested_group.email)
+                # Get users in child OUs
+                child_ous = await self.get_child_ous(ou_path)
+                for child_ou in child_ous:
+                    users = await self.get_users_in_ou(child_ou.org_unit_path)
                     for user in users:
                         if user.primary_email not in seen_emails:
                             all_users.append(user)
                             seen_emails.add(user.primary_email)
 
             except ValueError as e:
-                logger.warning(f'Skipping group {group_email}: {e}')
+                logger.warning(f'Skipping OU {ou_path}: {e}')
                 continue
 
-        logger.info(f'Found {len(all_users)} unique users across all groups')
+        logger.info(f'Found {len(all_users)} unique users across all OUs')
         return all_users
-
-    async def _get_group_member_emails(
-        self: GoogleWorkspaceClient, group_email: str
-    ) -> list[str]:
-        """Get all member email addresses for a group."""
-        member_emails = []
-        page_token = None
-
-        try:
-            while True:
-                request = self.admin_service.members().list(
-                    groupKey=group_email, pageToken=page_token, maxResults=200
-                )
-                result = request.execute()
-
-                members = result.get('members', [])
-                member_emails.extend([member['email'] for member in members])
-
-                page_token = result.get('nextPageToken')
-                if not page_token:
-                    break
-
-            return member_emails
-
-        except HttpError as e:
-            logger.error(
-                f'Error fetching member emails for {group_email}: {e}'
-            )
-            return []
 
     def _parse_user(
         self: GoogleWorkspaceClient, user_data: dict

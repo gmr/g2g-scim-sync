@@ -28,20 +28,22 @@ class GoogleUser(BaseModel):
     )
 
 
-class GoogleGroup(BaseModel):
-    """Google Workspace group model from Admin SDK."""
+class GoogleOU(BaseModel):
+    """Google Workspace Organizational Unit model from Admin SDK."""
 
-    id: str = Field(..., description='Google group ID')
-    name: str = Field(..., description='Group name')
-    email: EmailStr = Field(..., description='Group email address')
+    org_unit_path: str = Field(..., description='Organizational unit path')
+    name: str = Field(..., description='OU name (last component of path)')
     description: Optional[str] = Field(
-        default=None, description='Group description'
+        default=None, description='OU description'
     )
-    direct_members_count: int = Field(
-        default=0, description='Direct member count'
+    parent_org_unit_path: Optional[str] = Field(
+        default=None, description='Parent OU path'
     )
-    member_emails: list[EmailStr] = Field(
-        default_factory=list, description='Member email addresses'
+    user_count: int = Field(
+        default=0, description='Number of users in this OU'
+    )
+    user_emails: list[EmailStr] = Field(
+        default_factory=list, description='User email addresses in this OU'
     )
 
 
@@ -96,17 +98,17 @@ class GitHubTeam(BaseModel):
     )
 
     @classmethod
-    def from_google_group(
-        cls: type[GitHubTeam], google_group: GoogleGroup
+    def from_google_ou(
+        cls: type[GitHubTeam], google_ou: GoogleOU
     ) -> GitHubTeam:
-        """Create GitHub team from Google group."""
-        # Convert group name to valid team slug
-        slug = google_group.name.lower().replace(' ', '-').replace('_', '-')
+        """Create GitHub team from Google OU."""
+        # Convert OU name to valid team slug
+        slug = google_ou.name.lower().replace(' ', '-').replace('_', '-')
 
         return cls(
-            name=google_group.name,
+            name=google_ou.name,
             slug=slug,
-            description=google_group.description,
+            description=google_ou.description,
             members=[],  # Will be populated during sync
         )
 
@@ -154,27 +156,6 @@ class SyncSummary(BaseModel):
         if self.total_operations == 0:
             return 100.0
         return (self.successful_operations / self.total_operations) * 100.0
-
-
-class SyncConfig(BaseModel):
-    """Configuration for synchronization operations."""
-
-    groups: list[str] = Field(
-        default_factory=list, description='Google Groups to synchronize'
-    )
-    sync_teams: bool = Field(
-        default=True, description='Enable team synchronization'
-    )
-    include_suspended: bool = Field(
-        default=False, description='Include suspended users'
-    )
-    org_unit_filters: Optional[list[str]] = Field(
-        default=None, description='Organizational unit path filters'
-    )
-    delete_suspended: bool = Field(
-        default=False,
-        description='Delete suspended users instead of suspending',
-    )
 
 
 class SyncStats(BaseModel):
@@ -247,8 +228,8 @@ class TeamDiff(BaseModel):
     """Represents differences for a team sync operation."""
 
     action: str = Field(..., description='Action to perform (create/update)')
-    google_group: Optional[GoogleGroup] = Field(
-        default=None, description='Source Google group'
+    google_ou: Optional[GoogleOU] = Field(
+        default=None, description='Source Google OU'
     )
     existing_team: Optional[GitHubTeam] = Field(
         default=None, description='Existing GitHub team'

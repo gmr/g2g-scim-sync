@@ -7,11 +7,12 @@ from pydantic import ValidationError
 
 from g2g_scim_sync.models import (
     GitHubTeam,
-    GoogleGroup,
+    GoogleOU,
     GoogleUser,
     ScimUser,
     SyncOperation,
     SyncResult,
+    SyncStats,
     SyncSummary,
 )
 
@@ -87,48 +88,48 @@ class TestGoogleUser:
             )
 
 
-class TestGoogleGroup:
-    """Tests for GoogleGroup model."""
+class TestGoogleOU:
+    """Tests for GoogleOU model."""
 
-    def test_create_google_group(self) -> None:
-        """Test creating a Google group."""
-        group = GoogleGroup(
-            id='group123',
+    def test_create_google_ou(self) -> None:
+        """Test creating a Google OU."""
+        ou = GoogleOU(
+            org_unit_path='/Engineering',
             name='Engineering',
-            email='engineering@company.com',
-            description='Engineering team',
-            direct_members_count=5,
-            member_emails=['john@company.com', 'jane@company.com'],
+            description='Engineering department',
+            parent_org_unit_path='/',
+            user_count=5,
+            user_emails=['john@company.com', 'jane@company.com'],
         )
 
-        assert group.id == 'group123'
-        assert group.name == 'Engineering'
-        assert group.email == 'engineering@company.com'
-        assert group.description == 'Engineering team'
-        assert group.direct_members_count == 5
-        assert len(group.member_emails) == 2
+        assert ou.org_unit_path == '/Engineering'
+        assert ou.name == 'Engineering'
+        assert ou.description == 'Engineering department'
+        assert ou.parent_org_unit_path == '/'
+        assert ou.user_count == 5
+        assert len(ou.user_emails) == 2
 
-    def test_google_group_defaults(self) -> None:
-        """Test Google group with default values."""
-        group = GoogleGroup(
-            id='group123',
+    def test_google_ou_defaults(self) -> None:
+        """Test Google OU with default values."""
+        ou = GoogleOU(
+            org_unit_path='/Engineering',
             name='Engineering',
-            email='engineering@company.com',
         )
 
-        assert group.description is None
-        assert group.direct_members_count == 0
-        assert group.member_emails == []
+        assert ou.description is None
+        assert ou.parent_org_unit_path is None
+        assert ou.user_count == 0
+        assert ou.user_emails == []
 
-    def test_google_group_invalid_email(self) -> None:
-        """Test Google group with invalid email."""
+    def test_google_ou_invalid_user_email(self) -> None:
+        """Test Google OU with invalid user email."""
         with pytest.raises(
             ValidationError, match='value is not a valid email address'
         ):
-            GoogleGroup(
-                id='group123',
+            GoogleOU(
+                org_unit_path='/Engineering',
                 name='Engineering',
-                email='invalid-email',
+                user_emails=['invalid-email'],
             )
 
 
@@ -237,16 +238,15 @@ class TestGitHubTeam:
         assert team.privacy == 'closed'
         assert len(team.members) == 2
 
-    def test_github_team_from_google_group(self) -> None:
-        """Test creating GitHub team from Google group."""
-        google_group = GoogleGroup(
-            id='group123',
+    def test_github_team_from_google_ou(self) -> None:
+        """Test creating GitHub team from Google OU."""
+        google_ou = GoogleOU(
+            org_unit_path='/Engineering Team',
             name='Engineering Team',
-            email='engineering@company.com',
             description='Engineering team members',
         )
 
-        team = GitHubTeam.from_google_group(google_group)
+        team = GitHubTeam.from_google_ou(google_ou)
 
         assert team.name == 'Engineering Team'
         assert team.slug == 'engineering-team'
@@ -256,16 +256,15 @@ class TestGitHubTeam:
         assert team.id is None
 
     def test_github_team_slug_generation(self) -> None:
-        """Test GitHub team slug generation from group name."""
-        google_group = GoogleGroup(
-            id='group123',
-            name='Test_Group Name',
-            email='test@company.com',
+        """Test GitHub team slug generation from OU name."""
+        google_ou = GoogleOU(
+            org_unit_path='/Test_OU Name',
+            name='Test_OU Name',
         )
 
-        team = GitHubTeam.from_google_group(google_group)
+        team = GitHubTeam.from_google_ou(google_ou)
 
-        assert team.slug == 'test-group-name'
+        assert team.slug == 'test-ou-name'
 
     def test_github_team_defaults(self) -> None:
         """Test GitHub team with default values."""
@@ -323,39 +322,28 @@ class TestSyncResult:
 
     def test_create_sync_result(self) -> None:
         """Test creating a sync result."""
-        operation = SyncOperation(
-            operation_type='create',
-            resource_type='user',
-            resource_id='john.doe',
-        )
-
         result = SyncResult(
-            operation=operation,
             success=True,
             error=None,
         )
 
-        assert result.operation == operation
         assert result.success is True
         assert result.error is None
         assert isinstance(result.timestamp, datetime)
+        assert isinstance(result.user_diffs, list)
+        assert isinstance(result.team_diffs, list)
+        assert isinstance(result.stats, SyncStats)
 
     def test_sync_result_with_error(self) -> None:
         """Test sync result with error."""
-        operation = SyncOperation(
-            operation_type='create',
-            resource_type='user',
-            resource_id='john.doe',
-        )
-
         result = SyncResult(
-            operation=operation,
             success=False,
             error='User already exists',
         )
 
         assert result.success is False
         assert result.error == 'User already exists'
+        assert isinstance(result.timestamp, datetime)
 
 
 class TestSyncSummary:

@@ -10,7 +10,7 @@ from google.auth.exceptions import GoogleAuthError
 from googleapiclient.errors import HttpError
 
 from g2g_scim_sync.google_client import GoogleWorkspaceClient
-from g2g_scim_sync.models import GoogleGroup, GoogleUser
+from g2g_scim_sync.models import GoogleOU, GoogleUser
 
 
 class TestGoogleWorkspaceClient:
@@ -35,7 +35,7 @@ class TestGoogleWorkspaceClient:
             in client.scopes
         )
         assert (
-            'https://www.googleapis.com/auth/admin.directory.group.readonly'
+            'https://www.googleapis.com/auth/admin.directory.orgunit.readonly'
             in client.scopes
         )
         assert client._admin_service is None
@@ -188,56 +188,72 @@ class TestGoogleWorkspaceClient:
     @mock.patch('g2g_scim_sync.google_client.build')
     @mock.patch('g2g_scim_sync.google_client.Credentials')
     @pytest.mark.asyncio
-    async def test_get_users_in_group_success(
+    async def test_get_user_http_error(
         self,
         mock_credentials: mock.Mock,
         mock_build: mock.Mock,
         tmp_path: Path,
     ) -> None:
-        """Test successful retrieval of users in a group."""
+        """Test user retrieval with HTTP error other than 404."""
+        # Mock 500 error
+        mock_service = mock.Mock()
+        mock_build.return_value = mock_service
+
+        error_resp = mock.Mock()
+        error_resp.status = 500
+        http_error = HttpError(resp=error_resp, content=b'Server error')
+        mock_service.users().get().execute.side_effect = http_error
+
+        client = self.create_client(tmp_path)
+
+        with pytest.raises(HttpError):
+            await client.get_user('test@test.com')
+
+    @mock.patch('g2g_scim_sync.google_client.build')
+    @mock.patch('g2g_scim_sync.google_client.Credentials')
+    @pytest.mark.asyncio
+    async def test_get_users_in_ou_success(
+        self,
+        mock_credentials: mock.Mock,
+        mock_build: mock.Mock,
+        tmp_path: Path,
+    ) -> None:
+        """Test successful retrieval of users in an OU."""
         # Mock service
         mock_service = mock.Mock()
         mock_build.return_value = mock_service
 
-        # Mock group members response
-        members_data = {
-            'members': [
-                {'email': 'john.doe@test.com', 'type': 'USER'},
-                {'email': 'jane.smith@test.com', 'type': 'USER'},
+        # Mock users list response for OU
+        users_data = {
+            'users': [
                 {
-                    'email': 'subgroup@test.com',
-                    'type': 'GROUP',
-                },  # Should be ignored
+                    'id': '123',
+                    'primaryEmail': 'john.doe@test.com',
+                    'name': {
+                        'givenName': 'John',
+                        'familyName': 'Doe',
+                        'fullName': 'John Doe',
+                    },
+                    'suspended': False,
+                    'orgUnitPath': '/Engineering',
+                },
+                {
+                    'id': '456',
+                    'primaryEmail': 'jane.smith@test.com',
+                    'name': {
+                        'givenName': 'Jane',
+                        'familyName': 'Smith',
+                        'fullName': 'Jane Smith',
+                    },
+                    'suspended': False,
+                    'orgUnitPath': '/Engineering',
+                },
             ]
         }
-        mock_service.members().list().execute.return_value = members_data
-
-        # Mock user data responses
-        john_data = {
-            'id': '123',
-            'primaryEmail': 'john.doe@test.com',
-            'name': {
-                'givenName': 'John',
-                'familyName': 'Doe',
-                'fullName': 'John Doe',
-            },
-            'suspended': False,
-        }
-        jane_data = {
-            'id': '456',
-            'primaryEmail': 'jane.smith@test.com',
-            'name': {
-                'givenName': 'Jane',
-                'familyName': 'Smith',
-                'fullName': 'Jane Smith',
-            },
-            'suspended': False,
-        }
-
-        mock_service.users().get().execute.side_effect = [john_data, jane_data]
+        mock_service.users().list().execute.return_value = users_data
 
         client = self.create_client(tmp_path)
-        users = await client.get_users_in_group('engineering@test.com')
+        users = await client.get_users_in_ou('/Engineering')
 
         assert len(users) == 2
         assert users[0].primary_email == 'john.doe@test.com'
@@ -246,113 +262,301 @@ class TestGoogleWorkspaceClient:
     @mock.patch('g2g_scim_sync.google_client.build')
     @mock.patch('g2g_scim_sync.google_client.Credentials')
     @pytest.mark.asyncio
-    async def test_get_group_success(
+    async def test_get_users_in_ou_invalid_user(
         self,
         mock_credentials: mock.Mock,
         mock_build: mock.Mock,
         tmp_path: Path,
     ) -> None:
-        """Test successful group retrieval."""
+        """Test get_users_in_ou with invalid user data."""
         # Mock service
         mock_service = mock.Mock()
         mock_build.return_value = mock_service
 
-        # Mock group data
-        group_data = {
-            'id': 'group123',
-            'name': 'Engineering',
-            'email': 'engineering@test.com',
-            'description': 'Engineering team',
-            'directMembersCount': 5,
-        }
-        mock_service.groups().get().execute.return_value = group_data
-
-        # Mock member emails
-        members_data = {
-            'members': [{'email': 'john@test.com'}, {'email': 'jane@test.com'}]
-        }
-        mock_service.members().list().execute.return_value = members_data
-
-        client = self.create_client(tmp_path)
-        group = await client.get_group('engineering@test.com')
-
-        assert isinstance(group, GoogleGroup)
-        assert group.id == 'group123'
-        assert group.name == 'Engineering'
-        assert group.email == 'engineering@test.com'
-        assert group.description == 'Engineering team'
-        assert group.direct_members_count == 5
-        assert len(group.member_emails) == 2
-
-    @mock.patch('g2g_scim_sync.google_client.build')
-    @mock.patch('g2g_scim_sync.google_client.Credentials')
-    @pytest.mark.asyncio
-    async def test_get_nested_groups(
-        self,
-        mock_credentials: mock.Mock,
-        mock_build: mock.Mock,
-        tmp_path: Path,
-    ) -> None:
-        """Test retrieval of nested groups."""
-        # Mock service
-        mock_service = mock.Mock()
-        mock_build.return_value = mock_service
-
-        # Mock parent group members (contains a nested group)
-        parent_members = {
-            'members': [
-                {'email': 'user@test.com', 'type': 'USER'},
-                {'email': 'nested@test.com', 'type': 'GROUP'},
+        # Mock users list with invalid user data
+        users_data = {
+            'users': [
+                {
+                    'id': '123',
+                    'primaryEmail': 'valid.user@test.com',
+                    'name': {
+                        'givenName': 'Valid',
+                        'familyName': 'User',
+                        'fullName': 'Valid User',
+                    },
+                    'suspended': False,
+                    'orgUnitPath': '/Engineering',
+                },
+                {
+                    # Missing required 'id' field - will cause ValueError
+                    'primaryEmail': 'invalid.user@test.com',
+                    'name': {
+                        'givenName': 'Invalid',
+                        'familyName': 'User',
+                        'fullName': 'Invalid User',
+                    },
+                },
             ]
         }
-
-        # Mock nested group data
-        nested_group_data = {
-            'id': 'nested123',
-            'name': 'Nested Group',
-            'email': 'nested@test.com',
-            'directMembersCount': 2,
-        }
-
-        # Mock nested group members (no further nesting)
-        nested_members = {
-            'members': [{'email': 'nested_user@test.com', 'type': 'USER'}]
-        }
-
-        # Set up mock responses
-        mock_service.members().list().execute.side_effect = [
-            parent_members,  # Parent group members
-            {
-                'members': []
-            },  # Nested group has no group members (for recursion)
-            nested_members,  # Nested group member emails
-        ]
-        mock_service.groups().get().execute.return_value = nested_group_data
+        mock_service.users().list().execute.return_value = users_data
 
         client = self.create_client(tmp_path)
-        nested_groups = await client.get_nested_groups('parent@test.com')
+        users = await client.get_users_in_ou('/Engineering')
 
-        assert len(nested_groups) == 1
-        assert nested_groups[0].name == 'Nested Group'
-        assert nested_groups[0].email == 'nested@test.com'
+        # Should only return the valid user
+        assert len(users) == 1
+        assert users[0].primary_email == 'valid.user@test.com'
 
     @mock.patch('g2g_scim_sync.google_client.build')
     @mock.patch('g2g_scim_sync.google_client.Credentials')
     @pytest.mark.asyncio
-    async def test_get_all_users_in_groups(
+    async def test_get_users_in_ou_not_found(
         self,
         mock_credentials: mock.Mock,
         mock_build: mock.Mock,
         tmp_path: Path,
     ) -> None:
-        """Test getting all unique users across multiple groups."""
+        """Test get_users_in_ou when OU not found."""
+        # Mock service
+        mock_service = mock.Mock()
+        mock_build.return_value = mock_service
+
+        # Mock 404 error
+        error_resp = mock.Mock()
+        error_resp.status = 404
+        http_error = HttpError(resp=error_resp, content=b'OU not found')
+        mock_service.users().list().execute.side_effect = http_error
+
+        client = self.create_client(tmp_path)
+
+        with pytest.raises(ValueError, match='OU not found: /NonExistent'):
+            await client.get_users_in_ou('/NonExistent')
+
+    @mock.patch('g2g_scim_sync.google_client.build')
+    @mock.patch('g2g_scim_sync.google_client.Credentials')
+    @pytest.mark.asyncio
+    async def test_get_users_in_ou_http_error(
+        self,
+        mock_credentials: mock.Mock,
+        mock_build: mock.Mock,
+        tmp_path: Path,
+    ) -> None:
+        """Test get_users_in_ou with HTTP error other than 404."""
+        # Mock service
+        mock_service = mock.Mock()
+        mock_build.return_value = mock_service
+
+        # Mock 500 error
+        error_resp = mock.Mock()
+        error_resp.status = 500
+        http_error = HttpError(resp=error_resp, content=b'Server error')
+        mock_service.users().list().execute.side_effect = http_error
+
+        client = self.create_client(tmp_path)
+
+        with pytest.raises(HttpError):
+            await client.get_users_in_ou('/Engineering')
+
+    @mock.patch('g2g_scim_sync.google_client.build')
+    @mock.patch('g2g_scim_sync.google_client.Credentials')
+    @pytest.mark.asyncio
+    async def test_get_users_in_ou_pagination(
+        self,
+        mock_credentials: mock.Mock,
+        mock_build: mock.Mock,
+        tmp_path: Path,
+    ) -> None:
+        """Test get_users_in_ou with pagination."""
+        # Mock service
+        mock_service = mock.Mock()
+        mock_build.return_value = mock_service
+
+        # Mock paginated response
+        page1_data = {
+            'users': [
+                {
+                    'id': '123',
+                    'primaryEmail': 'user1@test.com',
+                    'name': {
+                        'givenName': 'User',
+                        'familyName': 'One',
+                        'fullName': 'User One',
+                    },
+                    'suspended': False,
+                    'orgUnitPath': '/Engineering',
+                },
+            ],
+            'nextPageToken': 'next_page_token',
+        }
+        page2_data = {
+            'users': [
+                {
+                    'id': '456',
+                    'primaryEmail': 'user2@test.com',
+                    'name': {
+                        'givenName': 'User',
+                        'familyName': 'Two',
+                        'fullName': 'User Two',
+                    },
+                    'suspended': False,
+                    'orgUnitPath': '/Engineering',
+                },
+            ],
+        }
+
+        mock_service.users().list().execute.side_effect = [
+            page1_data,
+            page2_data,
+        ]
+
+        client = self.create_client(tmp_path)
+        users = await client.get_users_in_ou('/Engineering')
+
+        # Should have users from both pages
+        assert len(users) == 2
+        assert users[0].primary_email == 'user1@test.com'
+        assert users[1].primary_email == 'user2@test.com'
+
+    @mock.patch('g2g_scim_sync.google_client.build')
+    @mock.patch('g2g_scim_sync.google_client.Credentials')
+    @pytest.mark.asyncio
+    async def test_get_ou_success(
+        self,
+        mock_credentials: mock.Mock,
+        mock_build: mock.Mock,
+        tmp_path: Path,
+    ) -> None:
+        """Test successful OU retrieval."""
+        # Mock service
+        mock_service = mock.Mock()
+        mock_build.return_value = mock_service
+
+        # Mock OU data
+        ou_data = {
+            'name': 'Engineering',
+            'orgUnitPath': '/Engineering',
+            'description': 'Engineering department',
+            'parentOrgUnitPath': '/',
+        }
+        mock_service.orgunits().get().execute.return_value = ou_data
+
+        # Mock users in OU
+        users_data = {
+            'users': [
+                {
+                    'id': '123',
+                    'primaryEmail': 'john@test.com',
+                    'name': {
+                        'givenName': 'John',
+                        'familyName': 'Doe',
+                        'fullName': 'John Doe',
+                    },
+                    'suspended': False,
+                    'orgUnitPath': '/Engineering',
+                },
+                {
+                    'id': '456',
+                    'primaryEmail': 'jane@test.com',
+                    'name': {
+                        'givenName': 'Jane',
+                        'familyName': 'Smith',
+                        'fullName': 'Jane Smith',
+                    },
+                    'suspended': False,
+                    'orgUnitPath': '/Engineering',
+                },
+            ]
+        }
+        mock_service.users().list().execute.return_value = users_data
+
+        client = self.create_client(tmp_path)
+        ou = await client.get_ou('/Engineering')
+
+        assert isinstance(ou, GoogleOU)
+        assert ou.name == 'Engineering'
+        assert ou.org_unit_path == '/Engineering'
+        assert ou.description == 'Engineering department'
+        assert ou.parent_org_unit_path == '/'
+        assert ou.user_count == 2
+        assert len(ou.user_emails) == 2
+
+    @mock.patch('g2g_scim_sync.google_client.build')
+    @mock.patch('g2g_scim_sync.google_client.Credentials')
+    @pytest.mark.asyncio
+    async def test_get_child_ous(
+        self,
+        mock_credentials: mock.Mock,
+        mock_build: mock.Mock,
+        tmp_path: Path,
+    ) -> None:
+        """Test retrieval of child OUs."""
+        # Mock service
+        mock_service = mock.Mock()
+        mock_build.return_value = mock_service
+
+        # Mock child OUs data
+        child_ous_data = {
+            'organizationUnits': [
+                {
+                    'name': 'Frontend',
+                    'orgUnitPath': '/Engineering/Frontend',
+                    'description': 'Frontend team',
+                    'parentOrgUnitPath': '/Engineering',
+                },
+                {
+                    'name': 'Backend',
+                    'orgUnitPath': '/Engineering/Backend',
+                    'description': 'Backend team',
+                    'parentOrgUnitPath': '/Engineering',
+                },
+            ]
+        }
+        mock_service.orgunits().list().execute.return_value = child_ous_data
+
+        client = self.create_client(tmp_path)
+
+        # Mock get_ou method for each child OU
+        with mock.patch.object(client, 'get_ou') as mock_get_ou:
+            mock_get_ou.side_effect = [
+                GoogleOU(
+                    org_unit_path='/Engineering/Frontend',
+                    name='Frontend',
+                    description='Frontend team',
+                    parent_org_unit_path='/Engineering',
+                    user_count=0,
+                    user_emails=[],
+                ),
+                GoogleOU(
+                    org_unit_path='/Engineering/Backend',
+                    name='Backend',
+                    description='Backend team',
+                    parent_org_unit_path='/Engineering',
+                    user_count=0,
+                    user_emails=[],
+                ),
+            ]
+            child_ous = await client.get_child_ous('/Engineering')
+
+            assert len(child_ous) == 2
+            assert child_ous[0].name == 'Frontend'
+            assert child_ous[0].org_unit_path == '/Engineering/Frontend'
+            assert child_ous[1].name == 'Backend'
+            assert child_ous[1].org_unit_path == '/Engineering/Backend'
+
+    @mock.patch('g2g_scim_sync.google_client.build')
+    @mock.patch('g2g_scim_sync.google_client.Credentials')
+    @pytest.mark.asyncio
+    async def test_get_all_users_in_ous(
+        self,
+        mock_credentials: mock.Mock,
+        mock_build: mock.Mock,
+        tmp_path: Path,
+    ) -> None:
+        """Test getting all unique users across multiple OUs."""
         client = self.create_client(tmp_path)
 
         # Mock the methods this function calls
-        with (
-            mock.patch.object(client, 'get_users_in_group') as mock_get_users,
-            mock.patch.object(client, 'get_nested_groups') as mock_get_nested,
-        ):
+        with mock.patch.object(client, 'get_users_in_ou') as mock_get_users:
             # Setup mock data
             user1 = GoogleUser(
                 id='1',
@@ -360,7 +564,7 @@ class TestGoogleWorkspaceClient:
                 given_name='User',
                 family_name='One',
                 full_name='User One',
-                org_unit_path='/',
+                org_unit_path='/Engineering',
             )
             user2 = GoogleUser(
                 id='2',
@@ -368,31 +572,28 @@ class TestGoogleWorkspaceClient:
                 given_name='User',
                 family_name='Two',
                 full_name='User Two',
-                org_unit_path='/',
+                org_unit_path='/Marketing',
+            )
+            user3 = GoogleUser(
+                id='1',  # Same user in different OU (duplicate)
+                primary_email='user1@test.com',
+                given_name='User',
+                family_name='One',
+                full_name='User One',
+                org_unit_path='/Engineering/Backend',
             )
 
             mock_get_users.side_effect = [
-                [user1, user2],  # First group
-                [user2],  # Second group (duplicate user2)
-                [user1],  # Nested group (duplicate user1)
+                [user1],  # First OU
+                [user2],  # Second OU
+                [user3],  # Third OU (duplicate user1)
             ]
 
-            nested_group = GoogleGroup(
-                id='nested',
-                name='Nested',
-                email='nested@test.com',
-                member_emails=[],
-            )
-            mock_get_nested.side_effect = [
-                [nested_group],  # First group has nested group
-                [],  # Second group has no nested groups
-            ]
-
-            users = await client.get_all_users_in_groups(
-                ['group1@test.com', 'group2@test.com']
+            users = await client.get_all_users_in_ous(
+                ['/Engineering', '/Marketing', '/Engineering/Backend']
             )
 
-            # Should have 2 unique users (duplicates removed)
+            # Should have 2 unique users (duplicates removed by email)
             assert len(users) == 2
             user_emails = {user.primary_email for user in users}
             assert user_emails == {'user1@test.com', 'user2@test.com'}

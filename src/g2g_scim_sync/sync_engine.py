@@ -7,12 +7,12 @@ from typing import Optional
 
 from g2g_scim_sync.github_client import GitHubScimClient
 from g2g_scim_sync.google_client import GoogleWorkspaceClient
+from g2g_scim_sync.config import SyncConfig
 from g2g_scim_sync.models import (
     GitHubTeam,
-    GoogleGroup,
+    GoogleOU,
     GoogleUser,
     ScimUser,
-    SyncConfig,
     SyncResult,
     SyncStats,
     UserDiff,
@@ -45,13 +45,13 @@ class SyncEngine:
 
     async def synchronize(
         self: SyncEngine,
-        group_emails: Optional[list[str]] = None,
+        ou_paths: Optional[list[str]] = None,
         dry_run: bool = False,
     ) -> SyncResult:
         """Perform full synchronization from Google Workspace to GitHub.
 
         Args:
-            group_emails: Google Groups to sync (defaults to config groups)
+            ou_paths: Google Workspace OU paths to sync
             dry_run: Preview changes without applying them
 
         Returns:
@@ -61,12 +61,12 @@ class SyncEngine:
         self._stats = SyncStats()
 
         try:
-            # Use configured groups if none specified
-            sync_groups = group_emails or self.config.groups
-            if not sync_groups:
-                raise ValueError('No groups specified for synchronization')
+            # Use configured OUs if none specified
+            sync_ous = ou_paths
+            if not sync_ous:
+                raise ValueError('No OUs specified for synchronization')
             # Fetch data from both systems
-            google_users = await self._get_google_users(sync_groups)
+            google_users = await self._get_google_users(sync_ous)
             github_users = await self._get_github_users()
 
             # Calculate user differences
@@ -82,13 +82,18 @@ class SyncEngine:
 
             # Handle team synchronization if enabled
             team_diffs: list[TeamDiff] = []
-            if self.config.sync_teams:
-                google_groups = await self._get_google_groups(sync_groups)
+            if self.config.create_teams:
                 github_teams = await self._get_github_teams()
 
-                team_diffs = await self._calculate_team_diffs(
-                    google_groups, github_teams, google_users
-                )
+                if self.config.flatten_ous:
+                    team_diffs = await self._calculate_flattened_team_diffs(
+                        google_users, github_teams
+                    )
+                else:
+                    google_ous = await self._get_google_ous(sync_ous)
+                    team_diffs = await self._calculate_team_diffs(
+                        google_ous, github_teams, google_users
+                    )
 
                 if not dry_run:
                     await self._apply_team_changes(team_diffs)
@@ -114,14 +119,12 @@ class SyncEngine:
             )
 
     async def _get_google_users(
-        self: SyncEngine, group_emails: list[str]
+        self: SyncEngine, ou_paths: list[str]
     ) -> list[GoogleUser]:
-        """Get all users from specified Google Groups (including nested)."""
-        logger.info(f'Fetching users from {len(group_emails)} Google groups')
+        """Get all users from specified Google OUs."""
+        logger.info(f'Fetching users from {len(ou_paths)} Google OUs')
 
-        all_users = await self.google_client.get_all_users_in_groups(
-            group_emails
-        )
+        all_users = await self.google_client.get_all_users_in_ous(ou_paths)
 
         # Apply user filters if configured
         filtered_users = []
@@ -135,6 +138,99 @@ class SyncEngine:
         logger.info(f'Found {len(filtered_users)} users to sync')
         return filtered_users
 
+    async def _get_google_ous(
+        self: SyncEngine, ou_paths: list[str]
+    ) -> list[GoogleOU]:
+        """Get all Google OUs from specified paths."""
+        logger.info(f'Fetching {len(ou_paths)} Google OUs')
+
+        all_ous = []
+        for ou_path in ou_paths:
+            try:
+                ou = await self.google_client.get_ou(ou_path)
+                all_ous.append(ou)
+            except ValueError as e:
+                logger.warning(f'Skipping OU {ou_path}: {e}')
+                continue
+
+        logger.info(f'Found {len(all_ous)} OUs')
+        return all_ous
+
+    async def _calculate_flattened_team_diffs(
+        self: SyncEngine,
+        google_users: list[GoogleUser],
+        github_teams: list[GitHubTeam],
+    ) -> list[TeamDiff]:
+        """Calculate team differences with OU hierarchy flattening.
+
+        For users in nested OUs like '/AWeber/Engineering/DBA',
+        create teams for each segment and add users to all teams.
+        """
+        logger.info('Calculating flattened team differences from OU paths')
+
+        # Create lookup maps
+        github_teams_by_slug = {team.slug: team for team in github_teams}
+
+        # Extract all unique team names from user OU paths
+        team_memberships = {}  # team_slug -> set of usernames
+
+        for user in google_users:
+            # Parse OU path like '/AWeber/Engineering/DBA'
+            path_segments = user.org_unit_path.strip('/').split('/')
+            username = self._email_to_username(user.primary_email)
+
+            # Skip root segment (AWeber) and create teams for remaining
+            for i in range(1, len(path_segments)):
+                segment = path_segments[i]
+                team_slug = segment.lower().replace(' ', '-').replace('_', '-')
+
+                if team_slug not in team_memberships:
+                    team_memberships[team_slug] = set()
+                team_memberships[team_slug].add(username)
+
+        # Generate team diffs
+        team_diffs = []
+
+        for team_slug, member_usernames in team_memberships.items():
+            existing_team = github_teams_by_slug.get(team_slug)
+
+            # Create target team with hierarchical name
+            target_team = GitHubTeam(
+                name=team_slug.replace('-', ' ').title(),
+                slug=team_slug,
+                description=(
+                    f'Team for {team_slug.replace("-", " ").title()} OU'
+                ),
+                members=list(member_usernames),
+            )
+
+            if existing_team is None:
+                # Team needs to be created
+                if self.config.create_teams:
+                    team_diffs.append(
+                        TeamDiff(
+                            action='create',
+                            google_ou=None,  # No single OU for flattened
+                            target_team=target_team,
+                        )
+                    )
+                    self._stats.teams_to_create += 1
+            else:
+                # Check if team needs to be updated
+                if self._teams_differ(existing_team, target_team):
+                    team_diffs.append(
+                        TeamDiff(
+                            action='update',
+                            google_ou=None,  # No single OU for flattened
+                            existing_team=existing_team,
+                            target_team=target_team,
+                        )
+                    )
+                    self._stats.teams_to_update += 1
+
+        logger.info(f'Found {len(team_diffs)} flattened team differences')
+        return team_diffs
+
     async def _get_github_users(self: SyncEngine) -> list[ScimUser]:
         """Get all existing SCIM users from GitHub Enterprise."""
         logger.info('Fetching existing GitHub SCIM users')
@@ -142,35 +238,6 @@ class SyncEngine:
         users = await self.github_client.get_users()
         logger.info(f'Found {len(users)} existing GitHub users')
         return users
-
-    async def _get_google_groups(
-        self: SyncEngine, group_emails: list[str]
-    ) -> list[GoogleGroup]:
-        """Get Google Groups for team synchronization."""
-        logger.info(f'Fetching {len(group_emails)} Google groups')
-
-        groups = []
-        for group_email in group_emails:
-            try:
-                group = await self.google_client.get_group(group_email)
-                groups.append(group)
-            except ValueError as e:
-                logger.warning(f'Skipping group {group_email}: {e}')
-                continue
-
-        # Get nested groups and flatten them
-        all_groups = []
-        for group in groups:
-            all_groups.append(group)
-
-            # Get nested groups
-            nested_groups = await self.google_client.get_nested_groups(
-                group.email
-            )
-            all_groups.extend(nested_groups)
-
-        logger.info(f'Found {len(all_groups)} total groups (including nested)')
-        return all_groups
 
     async def _get_github_teams(self: SyncEngine) -> list[GitHubTeam]:
         """Get all existing GitHub teams."""
@@ -251,11 +318,11 @@ class SyncEngine:
 
     async def _calculate_team_diffs(
         self: SyncEngine,
-        google_groups: list[GoogleGroup],
+        google_ous: list[GoogleOU],
         github_teams: list[GitHubTeam],
         google_users: list[GoogleUser],
     ) -> list[TeamDiff]:
-        """Calculate differences between Google Groups and GitHub teams."""
+        """Calculate differences between Google OUs and GitHub teams."""
         logger.info('Calculating team differences')
 
         # Create lookup maps
@@ -267,36 +334,42 @@ class SyncEngine:
 
         team_diffs = []
 
-        for google_group in google_groups:
-            team_slug = self._group_to_team_slug(google_group)
+        for google_ou in google_ous:
+            team_slug = self._ou_to_team_slug(google_ou)
             existing_team = github_teams_by_slug.get(team_slug)
 
-            # Convert member emails to GitHub usernames
+            # Convert OU user emails to GitHub usernames
             github_members = []
-            for email in google_group.member_emails:
+            for email in google_ou.user_emails:
                 username = user_email_to_username.get(email)
                 if username:
                     github_members.append(username)
                 else:
-                    logger.debug(f'No GitHub user for group member {email}')
+                    logger.debug(f'No GitHub user for OU user {email}')
 
             target_team = GitHubTeam(
-                name=google_group.name,
+                name=google_ou.name,
                 slug=team_slug,
-                description=google_group.description,
+                description=google_ou.description,
                 members=github_members,
             )
 
             if existing_team is None:
                 # Team needs to be created
-                team_diffs.append(
-                    TeamDiff(
-                        action='create',
-                        google_group=google_group,
-                        target_team=target_team,
+                if self.config.create_teams:
+                    team_diffs.append(
+                        TeamDiff(
+                            action='create',
+                            google_ou=google_ou,
+                            target_team=target_team,
+                        )
                     )
-                )
-                self._stats.teams_to_create += 1
+                    self._stats.teams_to_create += 1
+                else:
+                    logger.info(
+                        f'Skipping team creation for {team_slug} '
+                        '(create_teams=False)'
+                    )
 
             else:
                 # Check if team needs to be updated
@@ -304,7 +377,7 @@ class SyncEngine:
                     team_diffs.append(
                         TeamDiff(
                             action='update',
-                            google_group=google_group,
+                            google_ou=google_ou,
                             existing_team=existing_team,
                             target_team=target_team,
                         )
@@ -405,22 +478,14 @@ class SyncEngine:
         logger.info(f'DRY RUN: Would apply {len(team_diffs)} team changes:')
 
         for diff in team_diffs:
-            if diff.action == 'create' and diff.google_group:
-                logger.info(f'  CREATE TEAM: {diff.google_group.name}')
-            elif diff.action == 'update' and diff.google_group:
-                logger.info(f'  UPDATE TEAM: {diff.google_group.name}')
+            if diff.action == 'create' and diff.target_team:
+                logger.info(f'  CREATE TEAM: {diff.target_team.name}')
+            elif diff.action == 'update' and diff.target_team:
+                logger.info(f'  UPDATE TEAM: {diff.target_team.name}')
 
     def _should_sync_user(self: SyncEngine, user: GoogleUser) -> bool:
         """Check if user should be synchronized."""
-        # Skip suspended users unless explicitly enabled
-        if user.suspended and not self.config.include_suspended:
-            return False
-
-        # Check organizational unit filters
-        if self.config.org_unit_filters:
-            if user.org_unit_path not in self.config.org_unit_filters:
-                return False
-
+        # Always sync users, action logic handles suspended state
         return True
 
     def _google_user_to_scim(self: SyncEngine, user: GoogleUser) -> ScimUser:
@@ -471,7 +536,7 @@ class SyncEngine:
         # Use local part of email as username
         return email.split('@')[0].replace('.', '-')
 
-    def _group_to_team_slug(self: SyncEngine, group: GoogleGroup) -> str:
-        """Convert Google Group to GitHub team slug."""
-        # Use group name, convert to lowercase and replace spaces
-        return group.name.lower().replace(' ', '-').replace('_', '-')
+    def _ou_to_team_slug(self: SyncEngine, ou: GoogleOU) -> str:
+        """Convert Google OU to GitHub team slug."""
+        # Use OU name, convert to lowercase and replace spaces
+        return ou.name.lower().replace(' ', '-').replace('_', '-')
