@@ -1,12 +1,16 @@
 """Command-line interface for g2g-scim-sync."""
 
 import argparse
+import asyncio
 import logging
 import sys
 from pathlib import Path
 from typing import NoReturn
 
 from g2g_scim_sync.config import Config
+from g2g_scim_sync.github_client import GitHubScimClient
+from g2g_scim_sync.google_client import GoogleWorkspaceClient
+from g2g_scim_sync.sync_engine import SyncEngine
 
 
 def setup_logging(config: Config) -> None:
@@ -36,6 +40,47 @@ def setup_logging(config: Config) -> None:
         logger.addHandler(file_handler)
 
 
+async def run_sync(config: Config, dry_run: bool) -> None:
+    """Run the synchronization process."""
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Initialize clients
+        google_client = GoogleWorkspaceClient(
+            service_account_file=config.google.service_account_file,
+            domain=config.google.domain,
+        )
+        github_client = GitHubScimClient(
+            enterprise_url=config.github.enterprise_url,
+            scim_token=config.github.scim_token,
+            organization=config.github.organization,
+        )
+
+        # Create sync engine
+        sync_engine = SyncEngine(
+            google_client=google_client,
+            github_client=github_client,
+            config=config.sync,
+        )
+
+        # Run synchronization
+        result = await sync_engine.synchronize(
+            ou_paths=config.google.organizational_units,
+            dry_run=dry_run,
+        )
+
+        if not result.success:
+            raise RuntimeError(result.error)
+
+        # Log results
+        stats = result.stats
+        logger.info(f'Sync statistics: {stats}')
+
+    except Exception as e:
+        logger.error(f'Synchronization failed: {e}')
+        raise
+
+
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
@@ -63,8 +108,9 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     )
 
     parser.add_argument(
-        '--groups',
-        help='Comma-separated list of groups to sync (overrides config)',
+        '-ou',
+        '--organizational-units',
+        help='Comma-separated list of OU paths to sync (overrides config)',
     )
 
     parser.add_argument(
@@ -90,8 +136,10 @@ def main() -> NoReturn:
             config.logging.level = 'DEBUG'
         if args.delete_suspended:
             config.sync.delete_suspended = True
-        if args.groups:
-            config.google.groups = [g.strip() for g in args.groups.split(',')]
+        if args.organizational_units:
+            config.google.organizational_units = [
+                ou.strip() for ou in args.organizational_units.split(',')
+            ]
 
         # Setup logging
         setup_logging(config)
@@ -101,9 +149,10 @@ def main() -> NoReturn:
             logger.info('Running in DRY RUN mode - no changes will be made')
 
         logger.info(f'Starting sync with config: {args.config}')
-        logger.info(f'Target groups: {config.google.groups}')
+        logger.info(f'Target OUs: {config.google.organizational_units}')
 
-        # TODO: Implement sync logic
+        # Run synchronization
+        asyncio.run(run_sync(config, args.dry_run))
         logger.info('Sync completed successfully')
 
     except KeyboardInterrupt:

@@ -8,8 +8,8 @@ service_account_file = "path/to/service-account.json"
 # Your Google Workspace domain
 domain = "company.com"
 
-# List of Google Groups to synchronize
-groups = ["Engineering", "Sales", "Marketing"]
+# List of Google Workspace Organizational Units to synchronize
+organizational_units = ["/AWeber/Engineering", "/AWeber/Sales", "/AWeber/Marketing"]
 
 [github]
 # Your GitHub Enterprise base URL
@@ -28,8 +28,8 @@ delete_suspended = false
 # Automatically create missing GitHub teams
 create_teams = true
 
-# Flatten nested Google Groups into individual GitHub teams
-flatten_groups = true
+# Flatten nested Organizational Units into individual GitHub teams
+flatten_ous = true
 
 [logging]
 # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
