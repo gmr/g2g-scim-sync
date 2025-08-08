@@ -1,0 +1,39 @@
+# Example configuration for g2g-scim-sync
+# Copy to config.toml and update with your settings
+
+[google]
+# Path to your Google service account JSON file
+service_account_file = "path/to/service-account.json"
+
+# Your Google Workspace domain
+domain = "company.com"
+
+# List of Google Groups to synchronize
+groups = ["Engineering", "Sales", "Marketing"]
+
+[github]
+# Your GitHub Enterprise base URL
+enterprise_url = "https://github.company.com"
+
+# GitHub SCIM API token (provided by GitHub Enterprise admin)
+scim_token = "ghes_token_here"
+
+# Target GitHub organization
+organization = "company-org"
+
+[sync]
+# Delete suspended users instead of just deactivating them
+delete_suspended = false
+
+# Automatically create missing GitHub teams
+create_teams = true
+
+# Flatten nested Google Groups into individual GitHub teams
+flatten_groups = true
+
+[logging]
+# Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+level = "INFO"
+
+# Optional log file path (comment out to log only to console)
+file = "g2g-scim-sync.log"

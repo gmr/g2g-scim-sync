@@ -1,0 +1,121 @@
+[build-system]
+requires = ['hatchling']
+build-backend = 'hatchling.build'
+
+[project]
+name = 'g2g-scim-sync'
+dynamic = ['version']
+description = 'Google Workspace to GitHub Enterprise SCIM synchronization tool'
+authors = [
+    {name = 'Gavin M. Roy', email = 'gavinr@aweber.com'},
+]
+license = {text = 'BSD-3-Clause'}
+readme = 'README.md'
+requires-python = '>=3.12'
+keywords = [
+    'scim',
+    'google-workspace',
+    'github-enterprise',
+    'identity-management',
+    'provisioning',
+]
+classifiers = [
+    'Development Status :: 3 - Alpha',
+    'Environment :: Console',
+    'Intended Audience :: System Administrators',
+    'License :: OSI Approved :: BSD License',
+    'Natural Language :: English',
+    'Operating System :: OS Independent',
+    'Programming Language :: Python :: 3',
+    'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: 3.13',
+    'Topic :: System :: Systems Administration :: Authentication/Directory',
+    'Topic :: Software Development :: Libraries :: Python Modules',
+    'Typing :: Typed',
+]
+dependencies = [
+    'google-api-python-client>=2.0.0',
+    'google-auth>=2.0.0',
+    'httpx>=0.27.0',
+    'pydantic>=2.11.3,<3',
+    'tomli>=2.0.0;python_version<"3.11"',
+    'tomli-w>=1.0.0',
+]
+
+[project.optional-dependencies]
+dev = [
+    'build',
+    'coverage[toml]',
+    'pre-commit',
+    'pytest',
+    'pytest-asyncio',
+    'pytest-cov',
+    'ruff',
+]
+
+[project.scripts]
+g2g-scim-sync = 'g2g_scim_sync.cli:main'
+
+[project.urls]
+Homepage = 'https://github.com/gmr/g2g-scim-sync'
+Documentation = 'https://github.com/gmr/g2g-scim-sync'
+Repository = 'https://github.com/gmr/g2g-scim-sync'
+'Bug Tracker' = 'https://github.com/gmr/g2g-scim-sync/issues'
+
+[tool.hatch.version]
+path = 'VERSION'
+pattern = '^(?P<version>.+)$'
+
+[tool.hatch.build.targets.wheel]
+packages = ['src/g2g_scim_sync']
+
+[tool.coverage.run]
+branch = true
+source = ['g2g_scim_sync']
+omit = [
+    '*/tests/*',
+    '*/test_*',
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    'pragma: no cover',
+    'def __repr__',
+    'raise AssertionError',
+    'raise NotImplementedError',
+    'if __name__ == .__main__.:',
+    'if TYPE_CHECKING:',
+]
+fail_under = 90
+show_missing = true
+
+[tool.pytest.ini_options]
+addopts = '--cov=g2g_scim_sync --cov-report=term-missing --cov-report=html --strict-markers'
+testpaths = ['tests']
+asyncio_mode = 'auto'
+
+[tool.ruff]
+line-length = 79
+target-version = 'py312'
+
+[tool.ruff.lint]
+extend-select = [
+    'ANN',   # flake8-annotations
+    'ASYNC', # flake8-async
+    'B',     # flake8-bugbear
+    'E',     # pycodestyle errors
+    'F',     # pyflakes
+    'S',     # bandit
+    'W',     # pycodestyle warnings
+]
+ignore = [
+    'ANN401', # Dynamically typed expressions (typing.Any) are disallowed
+]
+
+[tool.ruff.format]
+quote-style = 'single'
+docstring-code-format = true
+docstring-code-line-length = 40
+
+[tool.ruff.lint.per-file-ignores]
+'tests/*' = ['S101']  # Use of assert detected

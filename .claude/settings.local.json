@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(.venv/bin/pip install:*)",
+      "Bash(.venv/bin/ruff check src/ tests/)",
+      "Bash(.venv/bin/ruff check --fix src/ tests/)",
+      "Bash(.venv/bin/g2g-scim-sync:*)",
+      "Bash(mv:*)",
+      "mcp__aweber_memory__find_memories_by_name",
+      "WebFetch(domain:github.com)"
+    ],
+    "deny": []
+  }
+}
