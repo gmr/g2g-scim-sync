@@ -27,6 +27,7 @@ class TestGoogleConfig:
             service_account_file=service_file,
             domain='company.com',
             organizational_units=['/Engineering', '/Sales'],
+            subject_email='admin@company.com',
         )
 
         assert config.service_account_file == service_file
@@ -40,6 +41,7 @@ class TestGoogleConfig:
                 service_account_file=Path('/nonexistent/file.json'),
                 domain='company.com',
                 organizational_units=['/Engineering'],
+                subject_email='admin@company.com',
             )
 
     def test_service_account_file_is_directory(self, tmp_path: Path) -> None:
@@ -54,6 +56,7 @@ class TestGoogleConfig:
                 service_account_file=directory,
                 domain='company.com',
                 organizational_units=['/Engineering'],
+                subject_email='admin@company.com',
             )
 
 
@@ -157,6 +160,7 @@ class TestConfig:
                 'service_account_file': str(service_file),
                 'domain': 'company.com',
                 'organizational_units': ['/Engineering', '/Sales'],
+                'subject_email': 'admin@company.com',
             },
             'github': {
                 'enterprise_url': 'https://github.company.com',
@@ -193,6 +197,7 @@ class TestConfig:
 service_account_file = "{service_file}"
 domain = "company.com"
 organizational_units = ["/Engineering", "/Sales"]
+subject_email = "admin@company.com"
 
 [github]
 enterprise_url = "https://github.company.com"
@@ -234,6 +239,7 @@ file = "app.log"
                 'service_account_file': str(service_file),
                 'domain': 'company.com',
                 'organizational_units': ['/Engineering'],
+                'subject_email': 'admin@company.com',
             },
             'github': {
                 'enterprise_url': 'https://github.company.com',

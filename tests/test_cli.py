@@ -68,6 +68,7 @@ class TestSetupLogging:
                     'service_account_file': str(service_file),
                     'domain': 'test.com',
                     'organizational_units': ['/Engineering'],
+                    'subject_email': 'admin@test.com',
                 },
                 'github': {
                     'enterprise_url': 'https://github.test.com',
@@ -101,6 +102,7 @@ class TestSetupLogging:
                     'service_account_file': str(service_file),
                     'domain': 'test.com',
                     'organizational_units': ['/Engineering'],
+                    'subject_email': 'admin@test.com',
                 },
                 'github': {
                     'enterprise_url': 'https://github.test.com',
@@ -141,6 +143,7 @@ class TestMain:
 service_account_file = "{service_file}"
 domain = "test.com"
 organizational_units = ["/Engineering"]
+subject_email = "admin@test.com"
 
 [github]
 enterprise_url = "https://github.test.com"

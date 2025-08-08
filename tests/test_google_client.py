@@ -22,7 +22,9 @@ class TestGoogleWorkspaceClient:
         service_file.write_text('{"type": "service_account"}')
 
         return GoogleWorkspaceClient(
-            service_account_file=service_file, domain='test.com'
+            service_account_file=service_file,
+            domain='test.com',
+            subject_email='admin@test.com',
         )
 
     def test_init(self, tmp_path: Path) -> None:
@@ -31,7 +33,7 @@ class TestGoogleWorkspaceClient:
 
         assert client.domain == 'test.com'
         assert (
-            'https://www.googleapis.com/auth/admin.directory.user.readonly'
+            'https://www.googleapis.com/auth/admin.directory.user'
             in client.scopes
         )
         assert (
@@ -49,6 +51,7 @@ class TestGoogleWorkspaceClient:
         client = GoogleWorkspaceClient(
             service_account_file=service_file,
             domain='test.com',
+            subject_email='admin@test.com',
             scopes=custom_scopes,
         )
 
@@ -66,6 +69,9 @@ class TestGoogleWorkspaceClient:
         # Mock credentials
         mock_creds = mock.Mock()
         mock_creds.valid = True
+        mock_delegated_creds = mock.Mock()
+        mock_delegated_creds.valid = True
+        mock_creds.with_subject.return_value = mock_delegated_creds
         mock_credentials.from_service_account_file.return_value = mock_creds
 
         # Mock service
@@ -77,8 +83,9 @@ class TestGoogleWorkspaceClient:
 
         assert service == mock_service
         mock_credentials.from_service_account_file.assert_called_once()
+        mock_creds.with_subject.assert_called_once_with('admin@test.com')
         mock_build.assert_called_once_with(
-            'admin', 'directory_v1', credentials=mock_creds
+            'admin', 'directory_v1', credentials=mock_delegated_creds
         )
 
     @mock.patch('g2g_scim_sync.google_client.build')
@@ -93,6 +100,9 @@ class TestGoogleWorkspaceClient:
         # Mock credentials that need refresh
         mock_creds = mock.Mock()
         mock_creds.valid = False
+        mock_delegated_creds = mock.Mock()
+        mock_delegated_creds.valid = False
+        mock_creds.with_subject.return_value = mock_delegated_creds
         mock_credentials.from_service_account_file.return_value = mock_creds
 
         # Mock service
@@ -103,7 +113,7 @@ class TestGoogleWorkspaceClient:
         service = client.admin_service
 
         assert service == mock_service
-        mock_creds.refresh.assert_called_once()
+        mock_delegated_creds.refresh.assert_called_once()
 
     @mock.patch('g2g_scim_sync.google_client.Credentials')
     def test_create_admin_service_auth_error(
