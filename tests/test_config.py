@@ -33,6 +33,22 @@ class TestGoogleConfig:
         assert config.service_account_file == service_file
         assert config.domain == 'company.com'
         assert config.organizational_units == ['/Engineering', '/Sales']
+        assert config.individual_users == []
+
+    def test_config_with_individual_users(self, tmp_path: Path) -> None:
+        """Test Google configuration with individual users."""
+        service_file = tmp_path / 'service-account.json'
+        service_file.write_text('{}')
+
+        config = GoogleConfig(
+            service_account_file=service_file,
+            domain='company.com',
+            organizational_units=['/Engineering'],
+            individual_users=['john@company.com', 'jane@company.com'],
+            subject_email='admin@company.com',
+        )
+
+        assert config.individual_users == ['john@company.com', 'jane@company.com']
 
     def test_nonexistent_service_account_file(self) -> None:
         """Test validation error for nonexistent service account file."""

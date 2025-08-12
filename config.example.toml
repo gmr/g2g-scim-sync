@@ -11,6 +11,12 @@ domain = "company.com"
 # List of Google Workspace Organizational Units to synchronize
 organizational_units = ["/Engineering", "/Operations"]
 
+# List of individual user emails to sync (outside of OUs) - optional
+individual_users = ["contractor1@company.com", "consultant@company.com"]
+
+# Admin user email for Google Workspace domain delegation
+subject_email = "admin@company.com"
+
 [github]
 # Your GitHub Enterprise base URL
 enterprise_url = "https://github.company.com"

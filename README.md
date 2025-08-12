@@ -5,9 +5,10 @@ A Python CLI tool that synchronizes Google Workspace users and groups to GitHub 
 ## Features
 
 - **One-way sync** from Google Workspace to GitHub Enterprise
-- **Group-filtered provisioning** - sync only users in specified Google Groups
-- **Automatic team creation** - creates missing GitHub teams from Google Groups
-- **Group flattening** - converts nested Google Groups into individual GitHub teams
+- **OU-based provisioning** - sync users in specified Google Workspace Organizational Units
+- **Individual user sync** - sync specific users outside of OUs (contractors, consultants, etc.)
+- **Automatic team creation** - creates missing GitHub teams from Google OUs
+- **OU flattening** - converts nested OUs into individual GitHub teams
 - **User lifecycle management** - handles create, update, suspend, and delete operations
 - **Dry run mode** - preview changes without applying them
 - **Comprehensive logging** - detailed audit trail for all operations
@@ -44,13 +45,14 @@ pip install -e .
 
 2. Update `config.toml` with your settings:
    - Google service account JSON file path
-   - Google Workspace domain and groups to sync
+   - Google Workspace domain, subject email, and OUs to sync
+   - Individual users to sync (optional)
    - GitHub Enterprise URL, SCIM token, and organization
    - Sync and logging preferences
 
 3. Ensure your Google service account has the following scopes:
-   - `https://www.googleapis.com/auth/admin.directory.user.readonly`
-   - `https://www.googleapis.com/auth/admin.directory.group.readonly`
+   - `https://www.googleapis.com/auth/admin.directory.user`
+   - `https://www.googleapis.com/auth/admin.directory.orgunit.readonly`
 
 ## Usage
 
@@ -69,9 +71,14 @@ g2g-scim-sync --config config.toml --dry-run
 g2g-scim-sync --config config.toml --delete-suspended
 ```
 
-### Sync Specific Groups Only
+### Sync Specific OUs Only
 ```bash
-g2g-scim-sync --config config.toml --groups "Engineering,Sales"
+g2g-scim-sync --config config.toml --organizational-units "/Engineering,/Sales"
+```
+
+### Sync Individual Users Only  
+```bash
+g2g-scim-sync --config config.toml --individual-users "contractor@company.com,consultant@company.com"
 ```
 
 ### Verbose Logging
@@ -81,8 +88,8 @@ g2g-scim-sync --config config.toml --verbose
 
 ## How It Works
 
-1. **Fetch**: Retrieves users from specified Google Groups via Admin SDK
-2. **Flatten**: Processes nested group memberships into flat team structure
+1. **Fetch**: Retrieves users from specified Google OUs and individual users via Admin SDK
+2. **Flatten**: Processes nested OU memberships into flat team structure (optional)
 3. **Compare**: Diffs current GitHub users/teams via SCIM API
 4. **Provision**: Applies changes (users and teams) via SCIM API
 5. **Log**: Records all operations for audit trail
@@ -94,10 +101,11 @@ g2g-scim-sync --config config.toml --verbose
 - **Suspensions**: Suspended Google users become inactive in GitHub
 - **Deletions**: Immediate deprovisioning (requires `--delete-suspended`)
 
-## Group Management
+## Team Management
 
-- Google Groups are flattened into individual GitHub teams
-- Team names use group names as-is (e.g., "Engineering" → "engineering")
+- Google OUs are flattened into individual GitHub teams (configurable)
+- Team names use OU names as-is (e.g., "Engineering" → "engineering")
+- Individual users don't create teams but can be added to existing teams
 - Missing GitHub teams are created automatically
 - Nested group memberships cascade (removing from parent removes from children)
 

@@ -67,6 +67,7 @@ async def run_sync(config: Config, dry_run: bool) -> None:
         # Run synchronization
         result = await sync_engine.synchronize(
             ou_paths=config.google.organizational_units,
+            individual_users=config.google.individual_users,
             dry_run=dry_run,
         )
 
@@ -115,6 +116,11 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     )
 
     parser.add_argument(
+        '--individual-users',
+        help='Comma-separated list of user emails to sync (overrides config)',
+    )
+
+    parser.add_argument(
         '--verbose',
         '-v',
         action='store_true',
@@ -141,6 +147,10 @@ def main() -> NoReturn:
             config.google.organizational_units = [
                 ou.strip() for ou in args.organizational_units.split(',')
             ]
+        if args.individual_users:
+            config.google.individual_users = [
+                user.strip() for user in args.individual_users.split(',')
+            ]
 
         # Setup logging
         setup_logging(config)
@@ -151,6 +161,8 @@ def main() -> NoReturn:
 
         logger.info(f'Starting sync with config: {args.config}')
         logger.info(f'Target OUs: {config.google.organizational_units}')
+        if config.google.individual_users:
+            logger.info(f'Individual users: {config.google.individual_users}')
 
         # Run synchronization
         asyncio.run(run_sync(config, args.dry_run))

@@ -25,6 +25,10 @@ class GoogleConfig(BaseModel):
         ...,
         description='List of Google Workspace OU paths to sync',
     )
+    individual_users: list[str] = Field(
+        default_factory=list,
+        description='List of individual user emails to sync outside of OUs',
+    )
     subject_email: str = Field(
         ...,
         description='Admin user email to impersonate for domain delegation',

@@ -608,6 +608,184 @@ class TestGoogleWorkspaceClient:
             user_emails = {user.primary_email for user in users}
             assert user_emails == {'user1@test.com', 'user2@test.com'}
 
+    @mock.patch('g2g_scim_sync.google_client.build')
+    @mock.patch('g2g_scim_sync.google_client.Credentials')
+    @pytest.mark.asyncio
+    async def test_get_individual_users(
+        self,
+        mock_credentials: mock.Mock,
+        mock_build: mock.Mock,
+        tmp_path: Path,
+    ) -> None:
+        """Test getting individual users by email."""
+        mock_service = mock.Mock()
+        mock_build.return_value = mock_service
+        
+        # Mock get user responses
+        def mock_get_user(userKey):
+            if userKey == 'john@test.com':
+                return mock.Mock(execute=mock.Mock(return_value={
+                    'id': '123',
+                    'primaryEmail': 'john@test.com',
+                    'name': {'givenName': 'John', 'familyName': 'Doe', 'fullName': 'John Doe'},
+                    'orgUnitPath': '/',
+                }))
+            elif userKey == 'jane@test.com':
+                return mock.Mock(execute=mock.Mock(return_value={
+                    'id': '456',
+                    'primaryEmail': 'jane@test.com',
+                    'name': {'givenName': 'Jane', 'familyName': 'Smith', 'fullName': 'Jane Smith'},
+                    'orgUnitPath': '/Sales',
+                }))
+            else:
+                error_resp = mock.Mock()
+                error_resp.status = 404
+                raise HttpError(resp=error_resp, content=b'Not found')
+        
+        mock_service.users().get.side_effect = mock_get_user
+        
+        client = self.create_client(tmp_path)
+        
+        # Test successful retrieval
+        users = await client.get_individual_users(['john@test.com', 'jane@test.com'])
+        
+        assert len(users) == 2
+        assert users[0].primary_email == 'john@test.com'
+        assert users[1].primary_email == 'jane@test.com'
+        
+    @mock.patch('g2g_scim_sync.google_client.build')
+    @mock.patch('g2g_scim_sync.google_client.Credentials')
+    @pytest.mark.asyncio
+    async def test_get_individual_users_with_not_found(
+        self,
+        mock_credentials: mock.Mock,
+        mock_build: mock.Mock,
+        tmp_path: Path,
+    ) -> None:
+        """Test getting individual users when some don't exist."""
+        mock_service = mock.Mock()
+        mock_build.return_value = mock_service
+        
+        def mock_get_user(userKey):
+            if userKey == 'john@test.com':
+                return mock.Mock(execute=mock.Mock(return_value={
+                    'id': '123',
+                    'primaryEmail': 'john@test.com',
+                    'name': {'givenName': 'John', 'familyName': 'Doe', 'fullName': 'John Doe'},
+                }))
+            else:
+                error_resp = mock.Mock()
+                error_resp.status = 404
+                raise HttpError(resp=error_resp, content=b'Not found')
+        
+        mock_service.users().get.side_effect = mock_get_user
+        
+        client = self.create_client(tmp_path)
+        
+        # Should skip missing users and return only found ones
+        users = await client.get_individual_users(['john@test.com', 'missing@test.com'])
+        
+        assert len(users) == 1
+        assert users[0].primary_email == 'john@test.com'
+
+    @mock.patch('g2g_scim_sync.google_client.build')
+    @mock.patch('g2g_scim_sync.google_client.Credentials')
+    @pytest.mark.asyncio
+    async def test_get_all_users(
+        self,
+        mock_credentials: mock.Mock,
+        mock_build: mock.Mock,
+        tmp_path: Path,
+    ) -> None:
+        """Test getting all users from OUs and individual list combined."""
+        mock_service = mock.Mock()
+        mock_build.return_value = mock_service
+        
+        # Mock OU users list response
+        ou_users_data = {
+            'users': [{
+                'id': '123',
+                'primaryEmail': 'ou.user@test.com',
+                'name': {'givenName': 'OU', 'familyName': 'User', 'fullName': 'OU User'},
+                'orgUnitPath': '/Engineering',
+            }]
+        }
+        
+        # Mock individual user get response
+        def mock_get_user(userKey):
+            if userKey == 'individual@test.com':
+                return mock.Mock(execute=mock.Mock(return_value={
+                    'id': '456',
+                    'primaryEmail': 'individual@test.com',
+                    'name': {'givenName': 'Individual', 'familyName': 'User', 'fullName': 'Individual User'},
+                    'orgUnitPath': '/',
+                }))
+            else:
+                error_resp = mock.Mock()
+                error_resp.status = 404
+                raise HttpError(resp=error_resp, content=b'Not found')
+        
+        mock_service.users().list().execute.return_value = ou_users_data
+        mock_service.users().get.side_effect = mock_get_user
+        mock_service.orgunits().list().execute.return_value = {'organizationUnits': []}
+        
+        client = self.create_client(tmp_path)
+        
+        users = await client.get_all_users(['/Engineering'], ['individual@test.com'])
+        
+        assert len(users) == 2
+        user_emails = {user.primary_email for user in users}
+        assert user_emails == {'ou.user@test.com', 'individual@test.com'}
+
+    @mock.patch('g2g_scim_sync.google_client.build')
+    @mock.patch('g2g_scim_sync.google_client.Credentials')
+    @pytest.mark.asyncio
+    async def test_get_all_users_deduplication(
+        self,
+        mock_credentials: mock.Mock,
+        mock_build: mock.Mock,
+        tmp_path: Path,
+    ) -> None:
+        """Test that duplicate users between OUs and individual list are deduplicated."""
+        mock_service = mock.Mock()
+        mock_build.return_value = mock_service
+        
+        # Mock OU users list response with duplicate user
+        ou_users_data = {
+            'users': [{
+                'id': '123',
+                'primaryEmail': 'duplicate@test.com',
+                'name': {'givenName': 'Duplicate', 'familyName': 'User', 'fullName': 'Duplicate User'},
+                'orgUnitPath': '/Engineering',
+            }]
+        }
+        
+        # Mock individual user get response with same user
+        def mock_get_user(userKey):
+            if userKey == 'duplicate@test.com':
+                return mock.Mock(execute=mock.Mock(return_value={
+                    'id': '123',
+                    'primaryEmail': 'duplicate@test.com',
+                    'name': {'givenName': 'Duplicate', 'familyName': 'User', 'fullName': 'Duplicate User'},
+                    'orgUnitPath': '/Engineering',
+                }))
+            else:
+                error_resp = mock.Mock()
+                error_resp.status = 404
+                raise HttpError(resp=error_resp, content=b'Not found')
+        
+        mock_service.users().list().execute.return_value = ou_users_data
+        mock_service.users().get.side_effect = mock_get_user
+        mock_service.orgunits().list().execute.return_value = {'organizationUnits': []}
+        
+        client = self.create_client(tmp_path)
+        
+        users = await client.get_all_users(['/Engineering'], ['duplicate@test.com'])
+        
+        # Should only have 1 user even though it appears in both OU and individual list
+        assert len(users) == 1
+        assert users[0].primary_email == 'duplicate@test.com'
+
     def test_parse_user_minimal(self, tmp_path: Path) -> None:
         """Test parsing user data with minimal fields."""
         client = self.create_client(tmp_path)

@@ -112,9 +112,7 @@ class TestSyncEngine:
         github_teams = []
 
         # Setup mock responses
-        self.mock_google_client.get_all_users_in_ous.return_value = (
-            google_users
-        )
+        self.mock_google_client.get_all_users.return_value = google_users
         self.mock_github_client.get_users.return_value = github_users
         self.mock_google_client.get_ou.return_value = google_ous[0]
         self.mock_github_client.get_groups.return_value = github_teams
@@ -139,7 +137,7 @@ class TestSyncEngine:
         assert result.team_diffs[0].action == 'create'
 
         # Verify API calls
-        self.mock_google_client.get_all_users_in_ous.assert_called_once()
+        self.mock_google_client.get_all_users.assert_called_once()
         self.mock_github_client.get_users.assert_called_once()
         self.mock_github_client.create_user.assert_called_once()
         self.mock_github_client.create_group.assert_called_once()
@@ -151,9 +149,7 @@ class TestSyncEngine:
         google_users = [self.create_google_user('john.doe@test.com')]
         github_users = []
 
-        self.mock_google_client.get_all_users_in_ous.return_value = (
-            google_users
-        )
+        self.mock_google_client.get_all_users.return_value = google_users
         self.mock_github_client.get_users.return_value = github_users
         self.mock_google_client.get_ou.return_value = self.create_google_ou(
             'Engineering', '/Engineering'
@@ -179,7 +175,7 @@ class TestSyncEngine:
         """Test synchronization with custom OU list."""
         custom_ous = ['/Custom/Department']
 
-        self.mock_google_client.get_all_users_in_ous.return_value = []
+        self.mock_google_client.get_all_users.return_value = []
         self.mock_github_client.get_users.return_value = []
         self.mock_github_client.get_groups.return_value = []
         self.mock_google_client.get_ou.return_value = self.create_google_ou(
@@ -189,15 +185,15 @@ class TestSyncEngine:
         await self.engine.synchronize(ou_paths=custom_ous)
 
         # Verify custom OUs were used
-        self.mock_google_client.get_all_users_in_ous.assert_called_once_with(
-            custom_ous
+        self.mock_google_client.get_all_users.assert_called_once_with(
+            custom_ous, []
         )
 
     @pytest.mark.asyncio
     async def test_synchronize_error_handling(self) -> None:
         """Test error handling during synchronization."""
         # Setup mock to raise exception
-        self.mock_google_client.get_all_users_in_ous.side_effect = Exception(
+        self.mock_google_client.get_all_users.side_effect = Exception(
             'Google API error'
         )
 
@@ -217,7 +213,7 @@ class TestSyncEngine:
 
         # Verify error
         assert result.success is False
-        assert 'No OUs specified for synchronization' in result.error
+        assert 'No OUs or individual users specified for synchronization' in result.error
 
     @pytest.mark.asyncio
     async def test_calculate_user_diffs_create(self) -> None:
@@ -520,9 +516,7 @@ class TestSyncEngine:
         github_teams = []
 
         # Setup mock responses
-        self.mock_google_client.get_all_users_in_ous.return_value = (
-            google_users
-        )
+        self.mock_google_client.get_all_users.return_value = google_users
         self.mock_github_client.get_users.return_value = github_users
         self.mock_github_client.get_groups.return_value = github_teams
 
@@ -561,7 +555,7 @@ class TestSyncEngine:
         assert all(diff.action == 'create' for diff in result.team_diffs)
 
         # Verify API calls
-        self.mock_google_client.get_all_users_in_ous.assert_called_once()
+        self.mock_google_client.get_all_users.assert_called_once()
         self.mock_github_client.get_users.assert_called_once()
         assert self.mock_github_client.create_user.call_count == 2
         assert self.mock_github_client.create_group.call_count == 4
@@ -577,9 +571,7 @@ class TestSyncEngine:
         github_users = []
 
         # Setup mock responses
-        self.mock_google_client.get_all_users_in_ous.return_value = (
-            google_users
-        )
+        self.mock_google_client.get_all_users.return_value = google_users
         self.mock_github_client.get_users.return_value = github_users
 
         # Mock GitHub operations

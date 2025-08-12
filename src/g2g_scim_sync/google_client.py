@@ -205,6 +205,24 @@ class GoogleWorkspaceClient:
             logger.error(f'Error fetching child OUs for {parent_ou_path}: {e}')
             raise
 
+    async def get_individual_users(
+        self: GoogleWorkspaceClient, user_emails: list[str]
+    ) -> list[GoogleUser]:
+        """Get specific individual users by email addresses."""
+        users = []
+        
+        for email in user_emails:
+            try:
+                user = await self.get_user(email)
+                users.append(user)
+                logger.debug(f'Retrieved individual user: {email}')
+            except ValueError as e:
+                logger.warning(f'Skipping individual user {email}: {e}')
+                continue
+                
+        logger.info(f'Found {len(users)} individual users')
+        return users
+
     async def get_all_users_in_ous(
         self: GoogleWorkspaceClient, ou_paths: list[str]
     ) -> list[GoogleUser]:
@@ -235,6 +253,39 @@ class GoogleWorkspaceClient:
                 continue
 
         logger.info(f'Found {len(all_users)} unique users across all OUs')
+        return all_users
+
+    async def get_all_users(
+        self: GoogleWorkspaceClient, 
+        ou_paths: list[str], 
+        individual_user_emails: list[str]
+    ) -> list[GoogleUser]:
+        """Get all users from OUs and individual user list combined."""
+        all_users = []
+        seen_emails = set()
+        
+        # Get users from OUs
+        ou_users = await self.get_all_users_in_ous(ou_paths)
+        for user in ou_users:
+            if user.primary_email not in seen_emails:
+                all_users.append(user)
+                seen_emails.add(user.primary_email)
+        
+        # Get individual users (not in OUs)
+        individual_users = await self.get_individual_users(individual_user_emails)
+        for user in individual_users:
+            if user.primary_email not in seen_emails:
+                all_users.append(user)
+                seen_emails.add(user.primary_email)
+            else:
+                logger.debug(
+                    f'Individual user {user.primary_email} already in OU, skipping'
+                )
+        
+        logger.info(
+            f'Found {len(all_users)} total unique users '
+            f'({len(ou_users)} from OUs, {len(individual_users)} individual)'
+        )
         return all_users
 
     def _parse_user(

@@ -234,6 +234,7 @@ organization = "test"
         mock_args.verbose = True
         mock_args.delete_suspended = True
         mock_args.organizational_units = '/Sales,/Marketing'
+        mock_args.individual_users = None
         mock_args.dry_run = False
         mock_parse_args.return_value = mock_args
 

@@ -46,12 +46,14 @@ class SyncEngine:
     async def synchronize(
         self: SyncEngine,
         ou_paths: Optional[list[str]] = None,
+        individual_users: Optional[list[str]] = None,
         dry_run: bool = False,
     ) -> SyncResult:
         """Perform full synchronization from Google Workspace to GitHub.
 
         Args:
             ou_paths: Google Workspace OU paths to sync
+            individual_users: Individual user emails to sync (outside OUs)
             dry_run: Preview changes without applying them
 
         Returns:
@@ -62,11 +64,14 @@ class SyncEngine:
 
         try:
             # Use configured OUs if none specified
-            sync_ous = ou_paths
-            if not sync_ous:
-                raise ValueError('No OUs specified for synchronization')
+            sync_ous = ou_paths or []
+            sync_individual = individual_users or []
+            
+            if not sync_ous and not sync_individual:
+                raise ValueError('No OUs or individual users specified for synchronization')
+                
             # Fetch data from both systems
-            google_users = await self._get_google_users(sync_ous)
+            google_users = await self._get_google_users(sync_ous, sync_individual)
             github_users = await self._get_github_users()
 
             # Calculate user differences
@@ -119,12 +124,17 @@ class SyncEngine:
             )
 
     async def _get_google_users(
-        self: SyncEngine, ou_paths: list[str]
+        self: SyncEngine, ou_paths: list[str], individual_users: list[str]
     ) -> list[GoogleUser]:
-        """Get all users from specified Google OUs."""
-        logger.info(f'Fetching users from {len(ou_paths)} Google OUs')
+        """Get all users from specified Google OUs and individual user list."""
+        logger.info(
+            f'Fetching users from {len(ou_paths)} Google OUs '
+            f'and {len(individual_users)} individual users'
+        )
 
-        all_users = await self.google_client.get_all_users_in_ous(ou_paths)
+        all_users = await self.google_client.get_all_users(
+            ou_paths, individual_users
+        )
 
         # Apply user filters if configured
         filtered_users = []
