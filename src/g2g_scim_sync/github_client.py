@@ -60,6 +60,7 @@ class GitHubScimClient:
             'Content-Type': 'application/scim+json',
             'Accept': 'application/scim+json',
             'User-Agent': 'g2g-scim-sync/1.0.0',
+            'X-GitHub-Api-Version': '2022-11-28',
         }
 
         return httpx.AsyncClient(
