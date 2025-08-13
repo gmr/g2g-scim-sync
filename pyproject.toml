@@ -61,9 +61,6 @@ Documentation = 'https://github.com/gmr/g2g-scim-sync'
 Repository = 'https://github.com/gmr/g2g-scim-sync'
 'Bug Tracker' = 'https://github.com/gmr/g2g-scim-sync/issues'
 
-[tool.hatch.build.force-include]
-"src/g2g_scim_sync/py.typed" = "g2g_scim_sync/py.typed"
-
 [tool.hatch.build.targets.wheel]
 packages = ['src/g2g_scim_sync']
 
