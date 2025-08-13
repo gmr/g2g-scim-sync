@@ -71,7 +71,7 @@ class GoogleWorkspaceClient:
             service = build(
                 'admin', 'directory_v1', credentials=delegated_credentials
             )
-            logger.info(
+            logger.debug(
                 f'Google Admin SDK client initialized with subject: '
                 f'{self.subject_email}'
             )
@@ -133,7 +133,7 @@ class GoogleWorkspaceClient:
                 if not page_token:
                     break
 
-            logger.info(f'Found {len(users)} users in OU {ou_path}')
+            logger.debug(f'Found {len(users)} users in OU {ou_path}')
             return users
 
         except HttpError as e:
@@ -196,7 +196,7 @@ class GoogleWorkspaceClient:
                     ou = await self.get_ou(ou_data['orgUnitPath'])
                     child_ous.append(ou)
 
-            logger.info(
+            logger.debug(
                 f'Found {len(child_ous)} child OUs in {parent_ou_path}'
             )
             return child_ous
@@ -220,7 +220,7 @@ class GoogleWorkspaceClient:
                 logger.warning(f'Skipping individual user {email}: {e}')
                 continue
 
-        logger.info(f'Found {len(users)} individual users')
+        logger.debug(f'Found {len(users)} individual users')
         return users
 
     async def get_all_users_in_ous(
@@ -252,7 +252,7 @@ class GoogleWorkspaceClient:
                 logger.warning(f'Skipping OU {ou_path}: {e}')
                 continue
 
-        logger.info(f'Found {len(all_users)} unique users across all OUs')
+        logger.debug(f'Found {len(all_users)} unique users across all OUs')
         return all_users
 
     async def get_all_users(
@@ -285,7 +285,7 @@ class GoogleWorkspaceClient:
                     'skipping'
                 )
 
-        logger.info(
+        logger.debug(
             f'Found {len(all_users)} total unique users '
             f'({len(ou_users)} from OUs, {len(individual_users)} individual)'
         )

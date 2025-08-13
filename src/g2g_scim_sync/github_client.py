@@ -135,7 +135,7 @@ class GitHubScimClient:
 
             current_start += len(resources)
 
-        logger.info(f'Retrieved {len(users)} users from GitHub Enterprise')
+        logger.debug(f'Retrieved {len(users)} users from GitHub Enterprise')
         return users
 
     async def get_user(self: GitHubScimClient, user_id: str) -> ScimUser:
@@ -173,7 +173,7 @@ class GitHubScimClient:
         created_data = response.json()
         created_user = self._parse_scim_user(created_data)
 
-        logger.info(f'Created user: {created_user.user_name}')
+        logger.debug(f'Created user: {created_user.user_name}')
         return created_user
 
     async def update_user(
@@ -200,7 +200,7 @@ class GitHubScimClient:
         updated_data = response.json()
         updated_user = self._parse_scim_user(updated_data)
 
-        logger.info(f'Updated user: {updated_user.user_name}')
+        logger.debug(f'Updated user: {updated_user.user_name}')
         return updated_user
 
     async def delete_user(self: GitHubScimClient, user_id: str) -> None:
@@ -212,7 +212,7 @@ class GitHubScimClient:
         response = await self.get_client().delete(f'/Users/{user_id}')
         response.raise_for_status()
 
-        logger.info(f'Deleted user ID: {user_id}')
+        logger.debug(f'Deleted user ID: {user_id}')
 
     async def suspend_user(
         self: GitHubScimClient,
@@ -245,7 +245,7 @@ class GitHubScimClient:
         updated_data = response.json()
         updated_user = self._parse_scim_user(updated_data)
 
-        logger.info(f'Suspended user: {updated_user.user_name}')
+        logger.debug(f'Suspended user: {updated_user.user_name}')
         return updated_user
 
     async def get_groups(
@@ -305,7 +305,7 @@ class GitHubScimClient:
 
             current_start += len(resources)
 
-        logger.info(f'Retrieved {len(teams)} teams from GitHub Enterprise')
+        logger.debug(f'Retrieved {len(teams)} teams from GitHub Enterprise')
         return teams
 
     async def create_group(
@@ -352,7 +352,7 @@ class GitHubScimClient:
         created_data = response.json()
         created_team = self._parse_scim_group(created_data)
 
-        logger.info(f'Created team: {created_team.name}')
+        logger.debug(f'Created team: {created_team.name}')
         return created_team
 
     async def update_group(
@@ -389,7 +389,7 @@ class GitHubScimClient:
         updated_data = response.json()
         updated_team = self._parse_scim_group(updated_data)
 
-        logger.info(f'Updated team: {updated_team.name}')
+        logger.debug(f'Updated team: {updated_team.name}')
         return updated_team
 
     async def _get_member_scim_data(

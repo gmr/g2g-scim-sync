@@ -78,10 +78,6 @@ async def run_sync(config: Config, dry_run: bool) -> None:
         if not result.success:
             raise RuntimeError(result.error)
 
-        # Log results
-        stats = result.stats
-        logger.info(f'Sync statistics: {stats}')
-
     except Exception as e:
         logger.error(f'Synchronization failed: {e}')
         raise
@@ -164,9 +160,9 @@ def main() -> NoReturn:
             logger.info('Running in DRY RUN mode - no changes will be made')
 
         logger.info(f'Starting sync with config: {args.config}')
-        logger.info(f'Target OUs: {config.google.organizational_units}')
+        logger.debug(f'Target OUs: {config.google.organizational_units}')
         if config.google.individual_users:
-            logger.info(f'Individual users: {config.google.individual_users}')
+            logger.debug(f'Individual users: {config.google.individual_users}')
 
         # Run synchronization
         asyncio.run(run_sync(config, args.dry_run))

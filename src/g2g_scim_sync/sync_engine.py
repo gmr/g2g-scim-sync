@@ -195,7 +195,7 @@ class SyncEngine:
         For users in nested OUs like '/AWeber/Engineering/DBA',
         create teams for each segment and add users to all teams.
         """
-        logger.info('Calculating flattened team differences from OU paths')
+        logger.debug('Calculating flattened team differences from OU paths')
 
         # Create lookup maps
         github_teams_by_slug = {team.slug: team for team in github_teams}
@@ -255,23 +255,23 @@ class SyncEngine:
                     )
                     self._stats.teams_to_update += 1
 
-        logger.info(f'Found {len(team_diffs)} flattened team differences')
+        logger.debug(f'Found {len(team_diffs)} flattened team differences')
         return team_diffs
 
     async def _get_github_users(self: SyncEngine) -> list[ScimUser]:
         """Get all existing SCIM users from GitHub Enterprise."""
-        logger.info('Fetching existing GitHub SCIM users')
+        logger.debug('Fetching existing GitHub SCIM users')
 
         users = await self.github_client.get_users()
-        logger.info(f'Found {len(users)} existing GitHub users')
+        logger.debug(f'Found {len(users)} existing GitHub users')
         return users
 
     async def _get_github_teams(self: SyncEngine) -> list[GitHubTeam]:
         """Get all existing GitHub teams."""
-        logger.info('Fetching existing GitHub teams')
+        logger.debug('Fetching existing GitHub teams')
 
         teams = await self.github_client.get_groups()
-        logger.info(f'Found {len(teams)} existing GitHub teams')
+        logger.debug(f'Found {len(teams)} existing GitHub teams')
         return teams
 
     async def _calculate_user_diffs(
@@ -280,7 +280,7 @@ class SyncEngine:
         github_users: list[ScimUser],
     ) -> list[UserDiff]:
         """Calculate differences between Google and GitHub users."""
-        logger.info('Calculating user differences')
+        logger.debug('Calculating user differences')
 
         # Create lookup maps for efficient comparison
         github_users_by_email = {
@@ -340,7 +340,7 @@ class SyncEngine:
                 )
                 self._stats.users_to_suspend += 1
 
-        logger.info(f'Found {len(user_diffs)} user differences')
+        logger.debug(f'Found {len(user_diffs)} user differences')
         return user_diffs
 
     async def _calculate_team_diffs(
@@ -421,7 +421,7 @@ class SyncEngine:
         self: SyncEngine, user_diffs: list[UserDiff]
     ) -> None:
         """Apply user changes to GitHub Enterprise."""
-        logger.info(f'Applying {len(user_diffs)} user changes')
+        logger.debug(f'Applying {len(user_diffs)} user changes')
 
         for diff in user_diffs:
             try:
