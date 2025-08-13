@@ -101,11 +101,11 @@ g2g-scim-sync --config config.toml --verbose
 - **Suspensions**: Suspended Google users become inactive in GitHub
 - **Deletions**: Immediate deprovisioning (requires `--delete-suspended`)
 
-## Team Management
+## idP Group Management
 
 - Google OUs are flattened into individual GitHub idP Groups (configurable)
-- Team names use OU names as-is (e.g., "Engineering" → "engineering")
-- Missing GitHub iDP Groups are created automatically
+- idP Group names use OU names as-is (e.g., "Engineering" → "engineering")
+- Missing GitHub idP Groups are created automatically
 - Nested group memberships cascade (removing from parent removes from children)
 
 ## Development
@@ -121,7 +121,7 @@ pre-commit install
 pytest
 
 # Run tests with coverage
-pytest --cov=g2g_scim_bridge --cov-report=html
+pytest --cov=g2g_scim_sync --cov-report=html
 
 # Format code
 ruff format
