@@ -186,7 +186,7 @@ class TestScimUser:
         assert scim_user.name['familyName'] == 'Doe'
         assert scim_user.name['formatted'] == 'John Doe'
         assert scim_user.active is True
-        assert scim_user.external_id == 'google123'
+        assert scim_user.external_id == 'john.doe'
 
     def test_scim_user_from_suspended_google_user(self) -> None:
         """Test creating SCIM user from suspended Google user."""
@@ -223,7 +223,7 @@ class TestGitHubTeam:
     def test_create_github_team(self) -> None:
         """Test creating a GitHub team."""
         team = GitHubTeam(
-            id=123,
+            id='team-uuid-123',
             name='Engineering',
             slug='engineering',
             description='Engineering team',
@@ -231,7 +231,7 @@ class TestGitHubTeam:
             members=['john', 'jane'],
         )
 
-        assert team.id == 123
+        assert team.id == 'team-uuid-123'
         assert team.name == 'Engineering'
         assert team.slug == 'engineering'
         assert team.description == 'Engineering team'

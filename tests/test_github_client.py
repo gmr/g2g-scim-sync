@@ -291,6 +291,7 @@ class TestGitHubScimClient:
                 'emails': [{'value': 'new.user@test.com', 'primary': True}],
                 'name': {'givenName': 'New', 'familyName': 'User'},
                 'active': True,
+                'roles': [{'value': 'user', 'primary': True}],
                 'externalId': 'ext456',
             },
         )
@@ -342,6 +343,7 @@ class TestGitHubScimClient:
                 ],
                 'name': {'givenName': 'Updated', 'familyName': 'User'},
                 'active': False,
+                'roles': [{'value': 'user', 'primary': True}],
             },
         )
 
@@ -476,14 +478,31 @@ class TestGitHubScimClient:
         mock_response.json.return_value = response_data
         mock_response.raise_for_status.return_value = None
 
-        with mock.patch.object(client, 'get_client') as mock_get_client:
+        with (
+            mock.patch.object(client, 'get_client') as mock_get_client,
+            mock.patch.object(
+                client, '_get_member_scim_data'
+            ) as mock_get_member_scim_data,
+        ):
             mock_client = mock.AsyncMock()
             mock_get_client.return_value = mock_client
             mock_client.post.return_value = mock_response
+            mock_get_member_scim_data.return_value = [
+                {
+                    'value': 'alice-scim-id',
+                    '$ref': 'ref-alice',
+                    'displayName': 'alice.brown',
+                },
+                {
+                    'value': 'charlie-scim-id',
+                    '$ref': 'ref-charlie',
+                    'displayName': 'charlie.davis',
+                },
+            ]
 
             created_team = await client.create_group(new_team)
 
-        assert created_team.id == 3
+        assert created_team.id == '3'
         assert created_team.name == 'Marketing'
         assert created_team.slug == 'marketing'
 
@@ -494,8 +513,16 @@ class TestGitHubScimClient:
                 'displayName': 'Marketing',
                 'externalId': 'marketing',
                 'members': [
-                    {'value': 'alice.brown', 'display': 'alice.brown'},
-                    {'value': 'charlie.davis', 'display': 'charlie.davis'},
+                    {
+                        'value': 'alice-scim-id',
+                        '$ref': 'ref-alice',
+                        'displayName': 'alice.brown',
+                    },
+                    {
+                        'value': 'charlie-scim-id',
+                        '$ref': 'ref-charlie',
+                        'displayName': 'charlie.davis',
+                    },
                 ],
             },
         )
@@ -507,7 +534,7 @@ class TestGitHubScimClient:
 
         # Updated team
         updated_team = GitHubTeam(
-            id=3,
+            id='3',
             name='Marketing Team',
             slug='marketing-team',
             members=['alice.brown'],
@@ -525,10 +552,22 @@ class TestGitHubScimClient:
         mock_response.json.return_value = response_data
         mock_response.raise_for_status.return_value = None
 
-        with mock.patch.object(client, 'get_client') as mock_get_client:
+        with (
+            mock.patch.object(client, 'get_client') as mock_get_client,
+            mock.patch.object(
+                client, '_get_member_scim_data'
+            ) as mock_get_member_scim_data,
+        ):
             mock_client = mock.AsyncMock()
             mock_get_client.return_value = mock_client
             mock_client.put.return_value = mock_response
+            mock_get_member_scim_data.return_value = [
+                {
+                    'value': 'alice-scim-id',
+                    '$ref': 'ref-alice',
+                    'displayName': 'alice.brown',
+                },
+            ]
 
             result_team = await client.update_group('3', updated_team)
 
@@ -543,7 +582,11 @@ class TestGitHubScimClient:
                 'displayName': 'Marketing Team',
                 'externalId': 'marketing-team',
                 'members': [
-                    {'value': 'alice.brown', 'display': 'alice.brown'}
+                    {
+                        'value': 'alice-scim-id',
+                        '$ref': 'ref-alice',
+                        'displayName': 'alice.brown',
+                    },
                 ],
             },
         )
@@ -609,6 +652,7 @@ class TestGitHubScimClient:
             'emails': [{'value': 'test.user@test.com', 'primary': True}],
             'name': {'givenName': 'Test', 'familyName': 'User'},
             'active': False,
+            'roles': [{'value': 'user', 'primary': True}],
             'externalId': 'ext123',
         }
 
@@ -647,7 +691,7 @@ class TestGitHubScimClient:
 
         team = client._parse_scim_group(group_data)
 
-        assert team.id == 123
+        assert team.id == '123'
         assert team.name == 'Test Team'
         assert team.slug == 'test-team'
         assert team.description == 'A test team'
@@ -665,7 +709,7 @@ class TestGitHubScimClient:
 
         team = client._parse_scim_group(group_data)
 
-        assert team.id == 456
+        assert team.id == '456'
         assert team.name == 'Another Team'
         assert team.slug == 'another team'  # fallback from display name
         assert team.description is None

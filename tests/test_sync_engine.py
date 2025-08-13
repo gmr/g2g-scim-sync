@@ -100,7 +100,7 @@ class TestSyncEngine:
     def create_github_team(self, name: str, slug: str) -> GitHubTeam:
         """Create a test GitHub team."""
         return GitHubTeam(
-            id=123,
+            id='team-uuid-123',
             name=name,
             slug=slug,
             description=f'{name} team',
