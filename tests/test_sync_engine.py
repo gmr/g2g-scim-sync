@@ -76,7 +76,7 @@ class TestSyncEngine:
 
         return ScimUser(
             id=f'scim_{username}',
-            user_name=username.replace('.', '-'),
+            user_name=email,  # Use full email as username
             emails=[{'value': email, 'primary': True}],
             name={
                 'givenName': given_name,
@@ -104,7 +104,7 @@ class TestSyncEngine:
             name=name,
             slug=slug,
             description=f'{name} team',
-            members=['john-doe', 'jane-smith'],
+            members=['john.doe@test.com', 'jane.smith@test.com'],
         )
 
     @pytest.mark.asyncio
@@ -277,7 +277,7 @@ class TestSyncEngine:
 
         assert len(diffs) == 1
         assert diffs[0].action == 'suspend'
-        assert diffs[0].existing_scim_user.user_name == 'orphan-user'
+        assert diffs[0].existing_scim_user.user_name == 'orphan.user@test.com'
 
     @pytest.mark.asyncio
     async def test_calculate_team_diffs_create(self) -> None:
@@ -333,7 +333,7 @@ class TestSyncEngine:
         google_user = self.create_google_user('john.doe@test.com')
         scim_user = self.engine._google_user_to_scim(google_user)
 
-        assert scim_user.user_name == 'john-doe'
+        assert scim_user.user_name == 'john.doe@test.com'
         assert scim_user.emails[0]['value'] == 'john.doe@test.com'
         assert scim_user.name['givenName'] == 'John'
         assert scim_user.name['familyName'] == 'Doe'
@@ -425,7 +425,7 @@ class TestSyncEngine:
     def test_email_to_username(self) -> None:
         """Test email to username conversion."""
         username = self.engine._email_to_username('john.doe@test.com')
-        assert username == 'john-doe'
+        assert username == 'john.doe@test.com'
 
     def test_email_to_username_with_emu_suffix(self) -> None:
         """Test email to username conversion with EMU suffix."""
@@ -433,11 +433,11 @@ class TestSyncEngine:
         self.github_config.emu_username_suffix = 'companyname'
 
         username = self.engine._email_to_username('john.doe@test.com')
-        assert username == 'john-doe_companyname'
+        assert username == 'john.doe@test.com_companyname'
 
         # Test with different email
         username = self.engine._email_to_username('jane.smith@test.com')
-        assert username == 'jane-smith_companyname'
+        assert username == 'jane.smith@test.com_companyname'
 
     def test_ou_to_team_slug(self) -> None:
         """Test OU to team slug conversion."""
@@ -698,20 +698,22 @@ class TestSyncEngine:
         engineering_diff = next(
             diff for diff in diffs if diff.target_team.slug == 'engineering'
         )
-        assert 'john-doe' in engineering_diff.target_team.members
-        assert 'jane-smith' in engineering_diff.target_team.members
-        assert 'bob-johnson' not in engineering_diff.target_team.members
+        assert 'john.doe@test.com' in engineering_diff.target_team.members
+        assert 'jane.smith@test.com' in engineering_diff.target_team.members
+        assert (
+            'bob.johnson@test.com' not in engineering_diff.target_team.members
+        )
 
         # Backend team should have only john.doe
         backend_diff = next(
             diff for diff in diffs if diff.target_team.slug == 'backend'
         )
-        assert 'john-doe' in backend_diff.target_team.members
-        assert 'jane-smith' not in backend_diff.target_team.members
+        assert 'john.doe@test.com' in backend_diff.target_team.members
+        assert 'jane.smith@test.com' not in backend_diff.target_team.members
 
         # Marketing team should have only bob.johnson
         marketing_diff = next(
             diff for diff in diffs if diff.target_team.slug == 'marketing'
         )
-        assert 'bob-johnson' in marketing_diff.target_team.members
-        assert 'john-doe' not in marketing_diff.target_team.members
+        assert 'bob.johnson@test.com' in marketing_diff.target_team.members
+        assert 'john.doe@test.com' not in marketing_diff.target_team.members

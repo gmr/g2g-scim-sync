@@ -586,8 +586,8 @@ class SyncEngine:
 
     def _email_to_username(self: SyncEngine, email: str) -> str:
         """Convert email to GitHub username with optional EMU suffix."""
-        # Use local part of email as username
-        username = email.split('@')[0].replace('.', '-')
+        # Use full email address as username
+        username = email
 
         # Add EMU suffix if configured
         if self.github_config.emu_username_suffix:
