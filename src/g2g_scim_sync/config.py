@@ -65,6 +65,10 @@ class GitHubConfig(BaseModel):
         default_factory=list,
         description='List of user emails who should be guest collaborators',
     )
+    emu_username_suffix: str | None = Field(
+        default=None,
+        description='EMU suffix to append to usernames (e.g., "companyname")',
+    )
 
     @field_validator('enterprise_url')
     @classmethod

@@ -115,6 +115,27 @@ class TestGitHubConfig:
                 organization='org',
             )
 
+    def test_config_with_emu_suffix(self) -> None:
+        """Test GitHub configuration with EMU username suffix."""
+        config = GitHubConfig(
+            enterprise_url='https://github.company.com',
+            scim_token='ghes_token_here',  # noqa: S106
+            organization='company-org',
+            emu_username_suffix='companyname',
+        )
+
+        assert config.emu_username_suffix == 'companyname'
+
+    def test_config_without_emu_suffix(self) -> None:
+        """Test GitHub configuration without EMU username suffix (default)."""
+        config = GitHubConfig(
+            enterprise_url='https://github.company.com',
+            scim_token='ghes_token_here',  # noqa: S106
+            organization='company-org',
+        )
+
+        assert config.emu_username_suffix is None
+
 
 class TestSyncConfig:
     """Tests for SyncConfig model."""

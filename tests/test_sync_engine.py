@@ -427,6 +427,18 @@ class TestSyncEngine:
         username = self.engine._email_to_username('john.doe@test.com')
         assert username == 'john-doe'
 
+    def test_email_to_username_with_emu_suffix(self) -> None:
+        """Test email to username conversion with EMU suffix."""
+        # Configure EMU suffix
+        self.github_config.emu_username_suffix = 'companyname'
+
+        username = self.engine._email_to_username('john.doe@test.com')
+        assert username == 'john-doe_companyname'
+
+        # Test with different email
+        username = self.engine._email_to_username('jane.smith@test.com')
+        assert username == 'jane-smith_companyname'
+
     def test_ou_to_team_slug(self) -> None:
         """Test OU to team slug conversion."""
         ou = self.create_google_ou('Engineering Team', '/Engineering Team')

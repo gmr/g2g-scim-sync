@@ -36,6 +36,11 @@ billing_managers = ["finance@company.com", "billing@company.com"]
 # List of user emails who should be assigned the guest_collaborator role
 guest_collaborators = ["contractor@external.com", "consultant@partner.com"]
 
+# Optional EMU (Enterprise Managed Users) username suffix
+# If set, usernames become: <username>_<suffix> (e.g., "john-doe_companyname")
+# Uncomment and set this for GitHub Enterprise with EMU enabled
+# emu_username_suffix = "companyname"
+
 [sync]
 # Delete suspended users instead of just deactivating them
 delete_suspended = false

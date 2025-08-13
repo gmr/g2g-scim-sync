@@ -585,9 +585,15 @@ class SyncEngine:
         return user.emails[0]['value'] if user.emails else ''
 
     def _email_to_username(self: SyncEngine, email: str) -> str:
-        """Convert email to GitHub username."""
+        """Convert email to GitHub username with optional EMU suffix."""
         # Use local part of email as username
-        return email.split('@')[0].replace('.', '-')
+        username = email.split('@')[0].replace('.', '-')
+
+        # Add EMU suffix if configured
+        if self.github_config.emu_username_suffix:
+            username = f'{username}_{self.github_config.emu_username_suffix}'
+
+        return username
 
     def _ou_to_team_slug(self: SyncEngine, ou: GoogleOU) -> str:
         """Convert Google OU to GitHub team slug."""
