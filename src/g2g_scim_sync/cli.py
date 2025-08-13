@@ -55,9 +55,9 @@ async def run_sync(config: Config, dry_run: bool) -> None:
             subject_email=config.google.subject_email,
         )
         github_client = GitHubScimClient(
-            enterprise_url=config.github.enterprise_url,
+            hostname=config.github.hostname,
             scim_token=config.github.scim_token,
-            organization=config.github.organization,
+            enterprise_account=config.github.enterprise_account,
         )
 
         # Create sync engine
@@ -159,14 +159,14 @@ def main() -> NoReturn:
         if args.dry_run:
             logger.info('Running in DRY RUN mode - no changes will be made')
 
-        logger.info(f'Starting sync with config: {args.config}')
+        logger.debug(f'Starting sync with config: {args.config}')
         logger.debug(f'Target OUs: {config.google.organizational_units}')
         if config.google.individual_users:
             logger.debug(f'Individual users: {config.google.individual_users}')
 
         # Run synchronization
         asyncio.run(run_sync(config, args.dry_run))
-        logger.info('Sync completed successfully')
+        logger.debug('Sync completed successfully')
 
     except KeyboardInterrupt:
         print('Interrupted by user', file=sys.stderr)

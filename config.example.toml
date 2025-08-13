@@ -18,14 +18,14 @@ individual_users = ["contractor1@company.com", "consultant@company.com"]
 subject_email = "admin@company.com"
 
 [github]
-# Your GitHub Enterprise base URL
-enterprise_url = "https://github.company.com"
+# Your GitHub Enterprise hostname (without https://)
+hostname = "company.ghe.com"
 
 # GitHub SCIM API token (provided by GitHub Enterprise admin)
 scim_token = "ghes_token_here"
 
-# Target GitHub organization
-organization = "company-org"
+# Target GitHub enterprise account name
+enterprise_account = "company-org"
 
 # List of user emails who should be assigned the enterprise_owner role
 enterprise_owners = ["ceo@company.com", "cto@company.com"]
@@ -45,16 +45,15 @@ guest_collaborators = ["contractor@external.com", "consultant@partner.com"]
 # Delete suspended users instead of just deactivating them
 delete_suspended = false
 
-# Automatically create missing GitHub teams
-# Set to false if your GitHub Enterprise instance manages teams through IdP instead of SCIM API
-create_teams = true
+# Automatically create missing GitHub idP Groups
+create_groups = true
 
-# Flatten nested Organizational Units into individual GitHub teams
+# Flatten nested Organizational Units into individual GitHub idP Groups
 flatten_ous = true
 
 [logging]
 # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
 level = "INFO"
 
-# Optional log file path (comment out to log only to console)
-file = "g2g-scim-sync.log"
+# Optional log file path
+# file = "g2g-scim-sync.log"

@@ -9,13 +9,13 @@ import pytest
 
 from g2g_scim_sync.config import SyncConfig, GitHubConfig
 from g2g_scim_sync.models import (
-    GitHubTeam,
+    GitHubGroup,
     GoogleOU,
     GoogleUser,
     ScimUser,
     SyncStats,
     UserDiff,
-    TeamDiff,
+    GroupDiff,
 )
 from g2g_scim_sync.sync_engine import SyncEngine
 
@@ -29,13 +29,13 @@ class TestSyncEngine:
         self.mock_github_client = mock.AsyncMock()
         self.config = SyncConfig(
             delete_suspended=False,
-            create_teams=True,
+            create_groups=True,
             flatten_ous=False,
         )
         self.github_config = GitHubConfig(
-            enterprise_url='https://github.company.com',
+            hostname='github.company.com',
             scim_token='token',  # noqa: S106
-            organization='org',
+            enterprise_account='org',
             enterprise_owners=['owner@test.com'],
             billing_managers=['billing@test.com'],
             guest_collaborators=['guest@test.com'],
@@ -97,9 +97,9 @@ class TestSyncEngine:
             user_emails=['john.doe@test.com', 'jane.smith@test.com'],
         )
 
-    def create_github_team(self, name: str, slug: str) -> GitHubTeam:
+    def create_github_team(self, name: str, slug: str) -> GitHubGroup:
         """Create a test GitHub team."""
-        return GitHubTeam(
+        return GitHubGroup(
             id='team-uuid-123',
             name=name,
             slug=slug,
@@ -141,9 +141,9 @@ class TestSyncEngine:
         assert result.success is True
         assert result.dry_run is False
         assert len(result.user_diffs) == 1  # One user to create
-        assert len(result.team_diffs) == 1  # One team to create
+        assert len(result.group_diffs) == 1  # One team to create
         assert result.user_diffs[0].action == 'create'
-        assert result.team_diffs[0].action == 'create'
+        assert result.group_diffs[0].action == 'create'
 
         # Verify API calls
         self.mock_google_client.get_all_users.assert_called_once()
@@ -280,42 +280,42 @@ class TestSyncEngine:
         assert diffs[0].existing_scim_user.user_name == 'orphan.user@test.com'
 
     @pytest.mark.asyncio
-    async def test_calculate_team_diffs_create(self) -> None:
+    async def test_calculate_group_diffs_create(self) -> None:
         """Test team diff calculation for creation."""
         google_ous = [self.create_google_ou('New Team', '/NewTeam')]
         github_teams = []
         google_users = [self.create_google_user('john.doe@test.com')]
 
-        diffs = await self.engine._calculate_team_diffs(
+        diffs = await self.engine._calculate_group_diffs(
             google_ous, github_teams, google_users
         )
 
         assert len(diffs) == 1
         assert diffs[0].action == 'create'
         assert diffs[0].google_ou.name == 'New Team'
-        assert diffs[0].target_team is not None
+        assert diffs[0].target_group is not None
 
     @pytest.mark.asyncio
-    async def test_calculate_team_diffs_update(self) -> None:
+    async def test_calculate_group_diffs_update(self) -> None:
         """Test team diff calculation for updates."""
         google_ou = self.create_google_ou('Engineering', '/Engineering')
 
         # Existing team with different members
-        existing_team = self.create_github_team('Engineering', 'engineering')
-        existing_team.members = ['old-member']
+        existing_group = self.create_github_team('Engineering', 'engineering')
+        existing_group.members = ['old-member']
 
-        github_teams = [existing_team]
+        github_teams = [existing_group]
         google_ous = [google_ou]
         google_users = [self.create_google_user('john.doe@test.com')]
 
-        diffs = await self.engine._calculate_team_diffs(
+        diffs = await self.engine._calculate_group_diffs(
             google_ous, github_teams, google_users
         )
 
         assert len(diffs) == 1
         assert diffs[0].action == 'update'
-        assert diffs[0].existing_team == existing_team
-        assert diffs[0].target_team is not None
+        assert diffs[0].existing_group == existing_group
+        assert diffs[0].target_group is not None
 
     def test_should_sync_user(self) -> None:
         """Test user filtering - now always returns True."""
@@ -399,22 +399,22 @@ class TestSyncEngine:
         user2.active = False
         assert self.engine._users_differ(user1, user2)
 
-    def test_teams_differ(self) -> None:
+    def test_groups_differ(self) -> None:
         """Test team difference detection."""
         team1 = self.create_github_team('Engineering', 'engineering')
         team2 = self.create_github_team('Engineering', 'engineering')
 
         # Same teams should not differ
-        assert not self.engine._teams_differ(team1, team2)
+        assert not self.engine._groups_differ(team1, team2)
 
         # Different names should differ
         team2.name = 'Marketing'
-        assert self.engine._teams_differ(team1, team2)
+        assert self.engine._groups_differ(team1, team2)
 
         # Different members should differ
         team2.name = team1.name
         team2.members = ['different-user']
-        assert self.engine._teams_differ(team1, team2)
+        assert self.engine._groups_differ(team1, team2)
 
     def test_get_primary_email(self) -> None:
         """Test primary email extraction."""
@@ -439,10 +439,10 @@ class TestSyncEngine:
         username = self.engine._email_to_username('jane.smith@test.com')
         assert username == 'jane.smith@test.com_companyname'
 
-    def test_ou_to_team_slug(self) -> None:
+    def test_ou_to_group_slug(self) -> None:
         """Test OU to team slug conversion."""
         ou = self.create_google_ou('Engineering Team', '/Engineering Team')
-        slug = self.engine._ou_to_team_slug(ou)
+        slug = self.engine._ou_to_group_slug(ou)
         assert slug == 'engineering-team'
 
     @pytest.mark.asyncio
@@ -510,24 +510,24 @@ class TestSyncEngine:
         assert self.engine._stats.users_suspended == 1
 
     @pytest.mark.asyncio
-    async def test_apply_team_changes_create(self) -> None:
+    async def test_apply_group_changes_create(self) -> None:
         """Test applying team creation changes."""
-        target_team = self.create_github_team('New Team', 'new-team')
-        diff = TeamDiff(
+        target_group = self.create_github_team('New Team', 'new-team')
+        diff = GroupDiff(
             action='create',
-            target_team=target_team,
+            target_group=target_group,
         )
 
-        created_team = target_team
+        created_team = target_group
         created_team.id = 456
         self.mock_github_client.create_group.return_value = created_team
 
-        await self.engine._apply_team_changes([diff])
+        await self.engine._apply_group_changes([diff])
 
         self.mock_github_client.create_group.assert_called_once_with(
-            target_team
+            target_group
         )
-        assert self.engine._stats.teams_created == 1
+        assert self.engine._stats.groups_created == 1
 
     @pytest.mark.asyncio
     async def test_apply_changes_error_handling(self) -> None:
@@ -552,22 +552,22 @@ class TestSyncEngine:
             action='create',
             google_user=self.create_google_user('new.user@test.com'),
         )
-        team_diff = TeamDiff(
+        group_diff = GroupDiff(
             action='create',
             google_ou=self.create_google_ou('New Team', '/New Team'),
-            target_team=self.create_github_team('New Team', 'new-team'),
+            target_group=self.create_github_team('New Team', 'new-team'),
         )
 
         # These should not raise exceptions
         self.engine._preview_user_changes([user_diff])
-        self.engine._preview_team_changes([team_diff])
+        self.engine._preview_group_changes([group_diff])
 
     @pytest.mark.asyncio
     async def test_synchronize_with_flattened_ous(self) -> None:
         """Test synchronization with OU flattening enabled."""
         # Update config to enable flattening
         self.config.flatten_ous = True
-        self.config.create_teams = True
+        self.config.create_groups = True
 
         # Setup mock data
         google_users = [
@@ -595,6 +595,7 @@ class TestSyncEngine:
         ]
 
         created_teams = [
+            self.create_github_team('AWeber', 'aweber'),
             self.create_github_team('Engineering', 'engineering'),
             self.create_github_team('Backend', 'backend'),
             self.create_github_team('Marketing', 'marketing'),
@@ -614,23 +615,25 @@ class TestSyncEngine:
         assert result.success is True
         assert result.dry_run is False
         assert len(result.user_diffs) == 2  # Two users to create
-        assert len(result.team_diffs) == 4  # Four teams to create (flattened)
+        assert len(result.group_diffs) == 5  # 5 flattened groups created
 
         # Verify all diffs are creation actions
         assert all(diff.action == 'create' for diff in result.user_diffs)
-        assert all(diff.action == 'create' for diff in result.team_diffs)
+        assert all(diff.action == 'create' for diff in result.group_diffs)
 
         # Verify API calls
         self.mock_google_client.get_all_users.assert_called_once()
-        self.mock_github_client.get_users.assert_called_once()
+        # get_users is called twice in flattened mode: once for sync, once for
+        # team mapping
+        assert self.mock_github_client.get_users.call_count == 2
         assert self.mock_github_client.create_user.call_count == 2
-        assert self.mock_github_client.create_group.call_count == 4
+        assert self.mock_github_client.create_group.call_count == 5
 
     @pytest.mark.asyncio
-    async def test_synchronize_with_teams_disabled(self) -> None:
-        """Test synchronization with team creation disabled."""
+    async def test_synchronize_with_groups_disabled(self) -> None:
+        """Test synchronization with group creation disabled."""
         # Update config to disable team creation
-        self.config.create_teams = False
+        self.config.create_groups = False
 
         # Setup mock data
         google_users = [self.create_google_user('john.doe@test.com')]
@@ -650,7 +653,7 @@ class TestSyncEngine:
         # Verify results
         assert result.success is True
         assert len(result.user_diffs) == 1  # One user to create
-        assert len(result.team_diffs) == 0  # No teams when disabled
+        assert len(result.group_diffs) == 0  # No teams when disabled
 
         # Verify API calls
         self.mock_github_client.create_user.assert_called_once()
@@ -660,7 +663,7 @@ class TestSyncEngine:
         self.mock_github_client.create_group.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_calculate_flattened_team_diffs(self) -> None:
+    async def test_calculate_flattened_group_diffs(self) -> None:
         """Test flattened team diff calculation."""
         # Setup users in nested OUs
         google_users = [
@@ -676,14 +679,16 @@ class TestSyncEngine:
         github_teams = []  # No existing teams
 
         # Test the flattened team diff calculation
-        diffs = await self.engine._calculate_flattened_team_diffs(
+        diffs = await self.engine._calculate_flattened_group_diffs(
             google_users, github_teams
         )
 
-        # Should create teams: engineering, backend, frontend, marketing
-        assert len(diffs) == 4
-        team_slugs = {diff.target_team.slug for diff in diffs}
+        # Should create teams: aweber, engineering, backend, frontend,
+        # marketing
+        assert len(diffs) == 5
+        team_slugs = {diff.target_group.slug for diff in diffs}
         assert team_slugs == {
+            'aweber',
             'engineering',
             'backend',
             'frontend',
@@ -696,24 +701,137 @@ class TestSyncEngine:
         # Verify team memberships
         # Engineering team should have both john.doe and jane.smith
         engineering_diff = next(
-            diff for diff in diffs if diff.target_team.slug == 'engineering'
+            diff for diff in diffs if diff.target_group.slug == 'engineering'
         )
-        assert 'john.doe@test.com' in engineering_diff.target_team.members
-        assert 'jane.smith@test.com' in engineering_diff.target_team.members
+        assert 'john.doe@test.com' in engineering_diff.target_group.members
+        assert 'jane.smith@test.com' in engineering_diff.target_group.members
         assert (
-            'bob.johnson@test.com' not in engineering_diff.target_team.members
+            'bob.johnson@test.com' not in engineering_diff.target_group.members
         )
 
         # Backend team should have only john.doe
         backend_diff = next(
-            diff for diff in diffs if diff.target_team.slug == 'backend'
+            diff for diff in diffs if diff.target_group.slug == 'backend'
         )
-        assert 'john.doe@test.com' in backend_diff.target_team.members
-        assert 'jane.smith@test.com' not in backend_diff.target_team.members
+        assert 'john.doe@test.com' in backend_diff.target_group.members
+        assert 'jane.smith@test.com' not in backend_diff.target_group.members
 
         # Marketing team should have only bob.johnson
         marketing_diff = next(
-            diff for diff in diffs if diff.target_team.slug == 'marketing'
+            diff for diff in diffs if diff.target_group.slug == 'marketing'
         )
-        assert 'bob.johnson@test.com' in marketing_diff.target_team.members
-        assert 'john.doe@test.com' not in marketing_diff.target_team.members
+        assert 'bob.johnson@test.com' in marketing_diff.target_group.members
+        assert 'john.doe@test.com' not in marketing_diff.target_group.members
+
+    @pytest.mark.asyncio
+    async def test_apply_group_changes_scim_not_supported(self) -> None:
+        """Test applying team changes when SCIM Groups API is not supported."""
+        from g2g_scim_sync.models import GitHubScimNotSupportedException
+
+        # Create a team diff that would need to be created
+        group_diff = GroupDiff(
+            action='create',
+            google_ou=self.create_google_ou(
+                'Engineering', '/AWeber/Engineering'
+            ),
+            target_group=self.create_github_team('Engineering', 'engineering'),
+        )
+
+        # Mock the GitHub client to raise the exception
+        self.mock_github_client.create_group.side_effect = (
+            GitHubScimNotSupportedException('SCIM Groups API not supported')
+        )
+
+        # Apply team changes - should handle the exception gracefully
+        await self.engine._apply_group_changes([group_diff])
+
+        # Verify stats show failed team creation
+        assert self.engine._stats.groups_failed == 1
+        assert self.engine._stats.groups_created == 0
+
+    @pytest.mark.asyncio
+    async def test_apply_group_changes_general_error(self) -> None:
+        """Test applying team changes with general exception handling."""
+        # Create a team diff for update
+        existing_group = self.create_github_team('Engineering', 'engineering')
+        existing_group.id = 'team123'
+
+        group_diff = GroupDiff(
+            action='update',
+            google_ou=self.create_google_ou(
+                'Engineering', '/AWeber/Engineering'
+            ),
+            existing_group=existing_group,
+            target_group=self.create_github_team(
+                'Engineering Updated', 'engineering'
+            ),
+        )
+
+        # Mock the GitHub client to raise a general exception
+        self.mock_github_client.update_group.side_effect = Exception(
+            'Network error'
+        )
+
+        # Apply team changes - should handle the exception gracefully
+        await self.engine._apply_group_changes([group_diff])
+
+        # Verify stats show failed team update
+        assert self.engine._stats.groups_failed == 1
+        assert self.engine._stats.groups_updated == 0
+
+    @pytest.mark.asyncio
+    async def test_synchronize_fetch_error_handling(self) -> None:
+        """Test synchronization with errors in fetching data."""
+        # Mock error when fetching Google users
+        self.mock_google_client.get_all_users.side_effect = Exception(
+            'Google API error'
+        )
+
+        # Synchronization should handle the error and not crash
+        result = await self.engine.synchronize(
+            ou_paths=['/AWeber/Engineering'], dry_run=True
+        )
+
+        # Result should indicate failure
+        assert result.success is False
+
+    @pytest.mark.asyncio
+    async def test_calculate_flattened_group_diffs_with_existing_group(
+        self,
+    ) -> None:
+        """Test calculating flattened group diffs with existing groups to
+        update."""
+        google_users = [
+            self.create_google_user('john.doe@test.com'),
+            self.create_google_user('jane.smith@test.com'),
+        ]
+        google_users[0].org_unit_path = '/AWeber/Engineering'
+        google_users[1].org_unit_path = '/AWeber/Engineering'
+
+        # Create existing team with different members
+        existing_group = self.create_github_team('Engineering', 'engineering')
+        existing_group.id = 'team123'
+        existing_group.members = ['old.user']  # Different from Google users
+        github_teams = [existing_group]
+
+        # Mock GitHub users for SCIM ID mapping
+        github_users = [
+            self.create_scim_user('old.user'),
+        ]
+        self.mock_github_client.get_users.return_value = github_users
+
+        diffs = await self.engine._calculate_flattened_group_diffs(
+            google_users, github_teams
+        )
+
+        # Should generate 1 create (aweber) and 1 update (engineering) diff
+        assert len(diffs) == 2
+
+        # Find the update diff for engineering team
+        update_diffs = [d for d in diffs if d.action == 'update']
+        create_diffs = [d for d in diffs if d.action == 'create']
+
+        assert len(update_diffs) == 1
+        assert len(create_diffs) == 1
+        assert update_diffs[0].existing_group is not None
+        assert update_diffs[0].existing_group.id == 'team123'

@@ -7,8 +7,8 @@ A Python CLI tool that synchronizes Google Workspace users and groups to GitHub 
 - **One-way sync** from Google Workspace to GitHub Enterprise
 - **OU-based provisioning** - sync users in specified Google Workspace Organizational Units
 - **Individual user sync** - sync specific users outside of OUs (contractors, consultants, etc.)
-- **Automatic team creation** - creates missing GitHub teams from Google OUs
-- **OU flattening** - converts nested OUs into individual GitHub teams
+- **Automatic idP Group creation** - creates missing GitHub idP Groups (teams) from Google OUs
+- **OU flattening** - converts nested OUs into individual GitHub idP Groups (teams)
 - **User lifecycle management** - handles create, update, suspend, and delete operations
 - **Dry run mode** - preview changes without applying them
 - **Comprehensive logging** - detailed audit trail for all operations
@@ -19,7 +19,7 @@ A Python CLI tool that synchronizes Google Workspace users and groups to GitHub 
 - Python 3.12+
 - Google Workspace admin access with service account
 - GitHub Enterprise with SCIM API access
-- GitHub organization admin permissions
+- GitHub enterprise account admin permissions
 
 ## Installation
 
@@ -38,6 +38,10 @@ pip install -e .
 
 ## Configuration
 
+For detailed setup instructions including Google Workspace and GitHub Enterprise Cloud configuration, see the [complete setup guide](docs/setup-guide.md).
+
+Quick start:
+
 1. Copy the example configuration:
    ```bash
    cp config.example.toml config.toml
@@ -47,12 +51,8 @@ pip install -e .
    - Google service account JSON file path
    - Google Workspace domain, subject email, and OUs to sync
    - Individual users to sync (optional)
-   - GitHub Enterprise URL, SCIM token, and organization
+   - GitHub Enterprise hostname, SCIM token, and enterprise account name
    - Sync and logging preferences
-
-3. Ensure your Google service account has the following scopes:
-   - `https://www.googleapis.com/auth/admin.directory.user`
-   - `https://www.googleapis.com/auth/admin.directory.orgunit.readonly`
 
 ## Usage
 
@@ -89,9 +89,9 @@ g2g-scim-sync --config config.toml --verbose
 ## How It Works
 
 1. **Fetch**: Retrieves users from specified Google OUs and individual users via Admin SDK
-2. **Flatten**: Processes nested OU memberships into flat team structure (optional)
-3. **Compare**: Diffs current GitHub users/teams via SCIM API
-4. **Provision**: Applies changes (users and teams) via SCIM API
+2. **Flatten**: Processes nested OU memberships into flat idP Group structure (optional)
+3. **Compare**: Diffs current GitHub users/idP Groups via SCIM API
+4. **Provision**: Applies changes (users and idP Groups) via SCIM API
 5. **Log**: Records all operations for audit trail
 
 ## User Lifecycle
@@ -103,10 +103,9 @@ g2g-scim-sync --config config.toml --verbose
 
 ## Team Management
 
-- Google OUs are flattened into individual GitHub teams (configurable)
+- Google OUs are flattened into individual GitHub idP Groups (configurable)
 - Team names use OU names as-is (e.g., "Engineering" → "engineering")
-- Individual users don't create teams but can be added to existing teams
-- Missing GitHub teams are created automatically
+- Missing GitHub iDP Groups are created automatically
 - Nested group memberships cascade (removing from parent removes from children)
 
 ## Development

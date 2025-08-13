@@ -7,7 +7,7 @@ This guide provides step-by-step instructions to set up g2g-scim-sync for synchr
 g2g-scim-sync enables automated user provisioning from Google Workspace to GitHub Enterprise Cloud organizations. The setup involves:
 
 1. Google Workspace service account configuration
-2. GitHub Enterprise Cloud SCIM OAuth app setup
+2. GitHub Enterprise Cloud SCIM personal access token setup
 3. SAML SSO configuration
 4. Tool configuration and testing
 
@@ -73,22 +73,22 @@ SCIM for GitHub Enterprise Cloud organizations requires SAML SSO to be configure
 
 1. In your GitHub organization, go to **Settings > Security > Authentication security**
 2. Under **SCIM provisioning**, click **Enable SCIM provisioning**
-3. This will generate an OAuth authorization URL for setting up the OAuth app
+3. **Critical**: Enable **"Open SCIM Configuration"** - this is required for external SCIM providers
 
-### 2.3 Create SCIM OAuth Application
+### 2.3 Create Personal Access Token
 
-**Important**: SCIM for GitHub Enterprise Cloud organizations uses OAuth apps, not personal access tokens.
+**Important**: SCIM for GitHub Enterprise Cloud requires a classic personal access token, not OAuth.
 
-1. The SCIM setup will provide an OAuth authorization flow
-2. You'll need to authorize a third-party OAuth app or create your own
-3. The OAuth app requires these scopes:
-   - `read:org`
-   - `write:org`
-   - `admin:org_hook`
+1. Sign in as your admin setup user
+2. Go to **Settings > Developer settings > Personal access tokens > Tokens (classic)**
+3. Click **Generate new token (classic)**
+4. Select **scim:enterprise** scope only
+5. Set no expiration date
+6. Generate and securely store the token
 
 ### 2.4 Test SCIM Access
 
-Test the OAuth token using your configured endpoint (g2g-scim-sync handles the correct API URLs automatically based on your `enterprise_hostname` setting).
+Test the personal access token using your configured endpoint (g2g-scim-sync handles the correct API URLs automatically based on your `hostname` setting).
 
 ## Part 3: SAML Configuration Requirements
 
@@ -152,13 +152,13 @@ individual_users = [
 
 [github]
 # GitHub Enterprise hostname (handles API URLs automatically)
-enterprise_hostname = "company-slug.ghe.com"  # or "github.com" for standard
+hostname = "company-slug.ghe.com"  # or "github.com" for standard
 
-# GitHub organization name
-organization = "your-org-name"
+# GitHub enterprise account name
+enterprise_account = "your-org-name"
 
-# OAuth token from SCIM setup (NOT a personal access token)
-oauth_token = "your_oauth_token_here"
+# Personal access token with scim:enterprise scope
+scim_token = "your_scim_token_here"
 
 [sync]
 # Create missing idP groups automatically
@@ -187,7 +187,7 @@ Expected output:
 ### 5.2 Test GitHub SCIM Connection
 
 The dry-run should show:
-- Successful GitHub SCIM API connection using OAuth token
+- Successful GitHub SCIM API connection using personal access token
 - Current GitHub organization users and teams
 - Planned sync operations (not executed)
 
@@ -242,9 +242,9 @@ g2g-scim-sync --config config.toml --verbose
 ### GitHub SCIM Errors
 
 **"Unauthorized" or "Token invalid"**:
-- Verify you're using the OAuth token from SCIM setup, not a PAT
-- Check organization name in API URLs is correct
-- Ensure OAuth app has required scopes
+- Verify you're using a classic personal access token with `scim:enterprise` scope
+- Check enterprise account name in configuration is correct
+- Ensure token was created by admin setup user
 
 **"SCIM not enabled"**:
 - Confirm SAML SSO is properly configured first
@@ -266,16 +266,16 @@ g2g-scim-sync --config config.toml --verbose
 
 **idP Groups not created**:
 - Ensure `create_groups = true` in configuration
-- Verify OAuth token has group creation permissions
+- Verify personal access token has group creation permissions
 - Check OU paths are case-sensitive and correct
 
 ## Security Considerations
 
-- **Credential Storage**: Store service account JSON and OAuth tokens securely
+- **Credential Storage**: Store service account JSON and personal access tokens securely
 - **Scope Limitation**: Use minimum required OAuth scopes
 - **Access Control**: Limit admin account permissions to required roles only
 - **Monitoring**: Log all sync operations and review regularly
-- **Token Rotation**: Rotate OAuth tokens and service account keys regularly
+- **Token Rotation**: Rotate personal access tokens and service account keys regularly
 
 ## API Rate Limits
 
@@ -294,5 +294,5 @@ g2g-scim-sync --config config.toml --dry-run --verbose --debug
 
 Check specific error patterns:
 - Google API errors: Usually permission or delegation issues
-- GitHub SCIM errors: Often OAuth token or rate limiting issues
+- GitHub SCIM errors: Often personal access token or rate limiting issues
 - User matching errors: Email address mismatches between systems

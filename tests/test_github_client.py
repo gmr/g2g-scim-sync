@@ -7,7 +7,7 @@ from unittest import mock
 
 
 from g2g_scim_sync.github_client import GitHubScimClient
-from g2g_scim_sync.models import GitHubTeam, ScimUser
+from g2g_scim_sync.models import GitHubGroup, ScimUser
 
 
 class TestGitHubScimClient:
@@ -16,26 +16,26 @@ class TestGitHubScimClient:
     def create_client(self) -> GitHubScimClient:
         """Create a test client."""
         return GitHubScimClient(
-            enterprise_url='https://github.company.com',
+            hostname='github.company.com',
             scim_token='ghes_test_token',  # noqa: S106
-            organization='test-org',
+            enterprise_account='test-org',
         )
 
     def create_cloud_client(self) -> GitHubScimClient:
         """Create a GitHub Enterprise Cloud test client."""
         return GitHubScimClient(
-            enterprise_url='https://github.com',
+            hostname='github.com',
             scim_token='ghe_test_token',  # noqa: S106
-            organization='test-org',
+            enterprise_account='test-org',
         )
 
     def test_init_enterprise_server(self) -> None:
         """Test client initialization for GitHub Enterprise Server."""
         client = self.create_client()
 
-        assert client.enterprise_url == 'https://github.company.com'
+        assert client.hostname == 'github.company.com'
         assert client.scim_token == 'ghes_test_token'  # noqa: S105
-        assert client.organization == 'test-org'
+        assert client.enterprise_account == 'test-org'
         assert client.timeout == 30.0
         assert (
             client.base_url
@@ -47,16 +47,16 @@ class TestGitHubScimClient:
         """Test client initialization for GitHub Enterprise Cloud."""
         client = self.create_cloud_client()
 
-        assert client.enterprise_url == 'https://github.com'
+        assert client.hostname == 'github.com'
         assert client.base_url == 'https://api.github.com/scim/v2/enterprises'
         assert client.enterprise_name == 'test-org'
 
     def test_init_custom_timeout(self) -> None:
         """Test client initialization with custom timeout."""
         client = GitHubScimClient(
-            enterprise_url='https://github.company.com',
+            hostname='github.company.com',
             scim_token='token',  # noqa: S106
-            organization='org',
+            enterprise_account='org',
             timeout=60.0,
         )
 
@@ -457,7 +457,7 @@ class TestGitHubScimClient:
         client = self.create_client()
 
         # Input team
-        new_team = GitHubTeam(
+        new_team = GitHubGroup(
             name='Marketing',
             slug='marketing',
             members=['alice.brown', 'charlie.davis'],
@@ -533,7 +533,7 @@ class TestGitHubScimClient:
         client = self.create_client()
 
         # Updated team
-        updated_team = GitHubTeam(
+        updated_team = GitHubGroup(
             id='3',
             name='Marketing Team',
             slug='marketing-team',
@@ -714,3 +714,119 @@ class TestGitHubScimClient:
         assert team.slug == 'another team'  # fallback from display name
         assert team.description is None
         assert team.members == []
+
+    @pytest.mark.asyncio
+    async def test_get_groups_scim_not_supported(self) -> None:
+        """Test get_groups when SCIM Groups API is not supported (404)."""
+        from g2g_scim_sync.models import GitHubScimNotSupportedException
+        import httpx
+
+        client = self.create_client()
+
+        with mock.patch('httpx.AsyncClient.get') as mock_get:
+            # Mock 404 response for SCIM Groups API
+            mock_response = mock.MagicMock()
+            mock_response.status_code = 404
+            mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+                message='Not Found',
+                request=mock.MagicMock(),
+                response=mock_response,
+            )
+            mock_get.return_value = mock_response
+
+            with pytest.raises(GitHubScimNotSupportedException) as exc_info:
+                await client.get_groups()
+
+            assert 'SCIM Groups API is not available' in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_get_groups_empty_resources(self) -> None:
+        """Test get_groups when no groups are found."""
+        client = self.create_client()
+
+        with mock.patch('httpx.AsyncClient.get') as mock_get:
+            # Mock empty response
+            mock_response = mock.MagicMock()
+            mock_response.json.return_value = {
+                'Resources': [],
+                'totalResults': 0,
+                'startIndex': 1,
+                'itemsPerPage': 20,
+            }
+            mock_response.raise_for_status.return_value = None
+            mock_get.return_value = mock_response
+
+            teams = await client.get_groups()
+            assert teams == []
+
+    @pytest.mark.asyncio
+    async def test_create_group_scim_not_supported(self) -> None:
+        """Test create_group when SCIM Groups API is not supported (404)."""
+        from g2g_scim_sync.models import GitHubScimNotSupportedException
+        import httpx
+
+        client = self.create_client()
+        team = GitHubGroup(
+            name='Test Team',
+            slug='test-team',
+            description='Test description',
+            members=['user1', 'user2'],
+        )
+
+        # Mock the _get_member_scim_data method to avoid the HTTP call
+        with mock.patch.object(
+            client, '_get_member_scim_data'
+        ) as mock_get_members:
+            mock_get_members.return_value = [
+                {
+                    'value': 'user1',
+                    '$ref': 'https://api.github.com/scim/v2/enterprises/test-org/Users/user1',
+                    'displayName': 'user1',
+                },
+                {
+                    'value': 'user2',
+                    '$ref': 'https://api.github.com/scim/v2/enterprises/test-org/Users/user2',
+                    'displayName': 'user2',
+                },
+            ]
+
+            with mock.patch('httpx.AsyncClient.post') as mock_post:
+                # Mock 404 response for SCIM Groups API
+                mock_response = mock.MagicMock()
+                mock_response.status_code = 404
+                mock_response.raise_for_status.side_effect = (
+                    httpx.HTTPStatusError(
+                        message='Not Found',
+                        request=mock.MagicMock(),
+                        response=mock_response,
+                    )
+                )
+                mock_post.return_value = mock_response
+
+                with pytest.raises(
+                    GitHubScimNotSupportedException
+                ) as exc_info:
+                    await client.create_group(team)
+
+            assert 'SCIM Groups API is not available' in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_get_member_scim_data_missing_user(self) -> None:
+        """Test _get_member_scim_data when username not found in SCIM users."""
+        client = self.create_client()
+
+        with mock.patch.object(client, 'get_users') as mock_get_users:
+            # Mock users response with one user
+            mock_user = ScimUser(
+                id='user123',
+                user_name='existing.user',
+                emails=[{'value': 'existing.user@test.com'}],
+                name={'givenName': 'Existing', 'familyName': 'User'},
+            )
+            mock_get_users.return_value = [mock_user]
+
+            # Test with missing username
+            result = await client._get_member_scim_data(['missing.user'])
+
+            # Should return empty list and log warning for missing user
+            assert result == []

@@ -9,7 +9,7 @@ from g2g_scim_sync.github_client import GitHubScimClient
 from g2g_scim_sync.google_client import GoogleWorkspaceClient
 from g2g_scim_sync.config import SyncConfig, GitHubConfig
 from g2g_scim_sync.models import (
-    GitHubTeam,
+    GitHubGroup,
     GitHubScimNotSupportedException,
     GoogleOU,
     GoogleUser,
@@ -17,7 +17,7 @@ from g2g_scim_sync.models import (
     SyncResult,
     SyncStats,
     UserDiff,
-    TeamDiff,
+    GroupDiff,
 )
 
 logger = logging.getLogger(__name__)
@@ -93,42 +93,43 @@ class SyncEngine:
             else:
                 self._preview_user_changes(user_diffs)
 
-            # Handle team synchronization if enabled
-            team_diffs: list[TeamDiff] = []
-            if self.config.create_teams:
+            # Handle idP Group synchronization if enabled
+            group_diffs: list[GroupDiff] = []
+            if self.config.create_groups:
                 try:
-                    github_teams = await self._get_github_teams()
+                    github_groups = await self._get_github_groups()
 
                     if self.config.flatten_ous:
-                        team_diffs = (
-                            await self._calculate_flattened_team_diffs(
-                                google_users, github_teams
+                        group_diffs = (
+                            await self._calculate_flattened_group_diffs(
+                                google_users, github_groups
                             )
                         )
                     else:
                         google_ous = await self._get_google_ous(sync_ous)
-                        team_diffs = await self._calculate_team_diffs(
-                            google_ous, github_teams, google_users
+                        group_diffs = await self._calculate_group_diffs(
+                            google_ous, github_groups, google_users
                         )
 
                     if not dry_run:
-                        await self._apply_team_changes(team_diffs)
+                        await self._apply_group_changes(group_diffs)
                     else:
-                        self._preview_team_changes(team_diffs)
+                        self._preview_group_changes(group_diffs)
 
                 except GitHubScimNotSupportedException as e:
                     logger.warning(f'Team operations disabled: {e}')
                     logger.info('Continuing with user provisioning only')
                     logger.info(
-                        'Consider setting create_teams=false in configuration '
-                        'to skip team operations'
+                        'Consider setting create_groups=false in '
+                        'configuration '
+                        'to skip idP Group operations'
                     )
 
             logger.info(f'Synchronization completed: {self._stats}')
             return SyncResult(
                 success=True,
                 user_diffs=user_diffs,
-                team_diffs=team_diffs,
+                group_diffs=group_diffs,
                 stats=self._stats,
                 dry_run=dry_run,
             )
@@ -185,15 +186,17 @@ class SyncEngine:
         logger.info(f'Found {len(all_ous)} OUs')
         return all_ous
 
-    async def _calculate_flattened_team_diffs(
+    async def _calculate_flattened_group_diffs(
         self: SyncEngine,
         google_users: list[GoogleUser],
-        github_teams: list[GitHubTeam],
-    ) -> list[TeamDiff]:
-        """Calculate team differences with OU hierarchy flattening.
+        github_groups: list[GitHubGroup],
+    ) -> list[GroupDiff]:
+        """Calculate idP Group differences with OU hierarchy flattening.
 
-        For users in nested OUs like '/AWeber/Engineering/DBA',
-        create teams for each segment and add users to all teams.
+        For users in nested OUs like '/Engineering/DBA',
+        create idP Groups for each segment and add users to all groups.
+        User in '/Engineering/DBA' gets added to both 'engineering' and 'dba'
+        groups.
         """
         logger.debug('Calculating flattened team differences from OU paths')
 
@@ -204,81 +207,85 @@ class SyncEngine:
         }
 
         # Create lookup maps
-        github_teams_by_slug = {team.slug: team for team in github_teams}
+        github_groups_by_slug = {group.slug: group for group in github_groups}
 
-        # Extract all unique team names from user OU paths
-        team_memberships = {}  # team_slug -> set of usernames
+        # Extract all unique group names from user OU paths
+        group_memberships = {}  # group_slug -> set of usernames
 
         for user in google_users:
             # Parse OU path like '/AWeber/Engineering/DBA'
             path_segments = user.org_unit_path.strip('/').split('/')
             username = self._email_to_username(user.primary_email)
 
-            # Skip root segment (AWeber) and create teams for remaining
-            for i in range(1, len(path_segments)):
+            # Create groups for all segments in the OU path
+            for i in range(0, len(path_segments)):
                 segment = path_segments[i]
-                team_slug = segment.lower().replace(' ', '-').replace('_', '-')
+                group_slug = (
+                    segment.lower().replace(' ', '-').replace('_', '-')
+                )
 
-                if team_slug not in team_memberships:
-                    team_memberships[team_slug] = set()
-                team_memberships[team_slug].add(username)
+                if group_slug not in group_memberships:
+                    group_memberships[group_slug] = set()
+                group_memberships[group_slug].add(username)
 
-        # Generate team diffs
-        team_diffs = []
+        # Generate group diffs
+        group_diffs = []
 
-        for team_slug, member_usernames in team_memberships.items():
-            existing_team = github_teams_by_slug.get(team_slug)
+        for group_slug, member_usernames in group_memberships.items():
+            existing_group = github_groups_by_slug.get(group_slug)
 
-            # Create target team with hierarchical name
-            target_team = GitHubTeam(
-                name=team_slug,
-                slug=team_slug,
-                description=(f'Team for {team_slug.replace("-", " ")} OU'),
+            # Create target group with hierarchical name
+            target_group = GitHubGroup(
+                name=group_slug,
+                slug=group_slug,
+                description=(
+                    f'idP Group for {group_slug.replace("-", " ")} OU'
+                ),
                 members=list(member_usernames),
             )
 
-            if existing_team is None:
+            if existing_group is None:
                 # Team needs to be created
-                if self.config.create_teams:
-                    team_diffs.append(
-                        TeamDiff(
+                if self.config.create_groups:
+                    group_diffs.append(
+                        GroupDiff(
                             action='create',
                             google_ou=None,  # No single OU for flattened
-                            target_team=target_team,
+                            target_group=target_group,
                         )
                     )
-                    self._stats.teams_to_create += 1
+                    self._stats.groups_to_create += 1
             else:
                 # Convert existing team member IDs to usernames for comparison
-                existing_team_usernames = []
-                for member_id in existing_team.members:
+                existing_group_usernames = []
+                for member_id in existing_group.members:
                     username = scim_id_to_username.get(member_id, member_id)
-                    existing_team_usernames.append(username)
+                    existing_group_usernames.append(username)
 
                 # Create normalized existing team for comparison
-                normalized_existing = GitHubTeam(
-                    id=existing_team.id,
-                    name=existing_team.name,
-                    slug=existing_team.slug,
-                    description=existing_team.description
-                    or target_team.description,
-                    members=existing_team_usernames,
+                normalized_existing = GitHubGroup(
+                    id=existing_group.id,
+                    name=existing_group.name,
+                    slug=existing_group.slug,
+                    description=existing_group.description
+                    or target_group.description,
+                    members=existing_group_usernames,
                 )
 
                 # Check if team needs to be updated
-                if self._teams_differ(normalized_existing, target_team):
-                    team_diffs.append(
-                        TeamDiff(
+                if self._groups_differ(normalized_existing, target_group):
+                    group_diffs.append(
+                        GroupDiff(
                             action='update',
                             google_ou=None,  # No single OU for flattened
-                            existing_team=existing_team,
-                            target_team=target_team,
+                            existing_group=existing_group,
+                            target_group=target_group,
                         )
                     )
-                    self._stats.teams_to_update += 1
+                    self._stats.groups_to_update += 1
 
-        logger.debug(f'Found {len(team_diffs)} flattened team differences')
-        return team_diffs
+        logger.debug(f'Found {len(group_diffs)} flattened team differences')
+        return group_diffs
 
     async def _get_github_users(self: SyncEngine) -> list[ScimUser]:
         """Get all existing SCIM users from GitHub Enterprise."""
@@ -288,13 +295,13 @@ class SyncEngine:
         logger.debug(f'Found {len(users)} existing GitHub users')
         return users
 
-    async def _get_github_teams(self: SyncEngine) -> list[GitHubTeam]:
-        """Get all existing GitHub teams."""
-        logger.debug('Fetching existing GitHub teams')
+    async def _get_github_groups(self: SyncEngine) -> list[GitHubGroup]:
+        """Get all existing GitHub idP Groups."""
+        logger.debug('Fetching existing GitHub idP Groups')
 
-        teams = await self.github_client.get_groups()
-        logger.debug(f'Found {len(teams)} existing GitHub teams')
-        return teams
+        groups = await self.github_client.get_groups()
+        logger.debug(f'Found {len(groups)} existing GitHub idP Groups')
+        return groups
 
     async def _calculate_user_diffs(
         self: SyncEngine,
@@ -365,27 +372,27 @@ class SyncEngine:
         logger.debug(f'Found {len(user_diffs)} user differences')
         return user_diffs
 
-    async def _calculate_team_diffs(
+    async def _calculate_group_diffs(
         self: SyncEngine,
         google_ous: list[GoogleOU],
-        github_teams: list[GitHubTeam],
+        github_groups: list[GitHubGroup],
         google_users: list[GoogleUser],
-    ) -> list[TeamDiff]:
-        """Calculate differences between Google OUs and GitHub teams."""
-        logger.info('Calculating team differences')
+    ) -> list[GroupDiff]:
+        """Calculate differences between Google OUs and GitHub idP Groups."""
+        logger.info('Calculating idP Group differences')
 
         # Create lookup maps
-        github_teams_by_slug = {team.slug: team for team in github_teams}
+        github_groups_by_slug = {group.slug: group for group in github_groups}
         user_email_to_username = {
             user.primary_email: self._email_to_username(user.primary_email)
             for user in google_users
         }
 
-        team_diffs = []
+        group_diffs = []
 
         for google_ou in google_ous:
-            team_slug = self._ou_to_team_slug(google_ou)
-            existing_team = github_teams_by_slug.get(team_slug)
+            group_slug = self._ou_to_group_slug(google_ou)
+            existing_group = github_groups_by_slug.get(group_slug)
 
             # Convert OU user emails to GitHub usernames
             github_members = []
@@ -396,48 +403,48 @@ class SyncEngine:
                 else:
                     logger.debug(f'No GitHub user for OU user {email}')
 
-            target_team = GitHubTeam(
-                name=team_slug,
-                slug=team_slug,
+            target_group = GitHubGroup(
+                name=group_slug,
+                slug=group_slug,
                 description=google_ou.description,
                 members=github_members,
             )
 
-            if existing_team is None:
+            if existing_group is None:
                 # Team needs to be created
-                if self.config.create_teams:
-                    team_diffs.append(
-                        TeamDiff(
+                if self.config.create_groups:
+                    group_diffs.append(
+                        GroupDiff(
                             action='create',
                             google_ou=google_ou,
-                            target_team=target_team,
+                            target_group=target_group,
                         )
                     )
-                    self._stats.teams_to_create += 1
+                    self._stats.groups_to_create += 1
                 else:
                     logger.info(
-                        f'Skipping team creation for {team_slug} '
+                        f'Skipping idP Group creation for {group_slug} '
                         '(create_teams=False)'
                     )
 
             else:
                 # Check if team needs to be updated
-                if self._teams_differ(existing_team, target_team):
-                    team_diffs.append(
-                        TeamDiff(
+                if self._groups_differ(existing_group, target_group):
+                    group_diffs.append(
+                        GroupDiff(
                             action='update',
                             google_ou=google_ou,
-                            existing_team=existing_team,
-                            target_team=target_team,
+                            existing_group=existing_group,
+                            target_group=target_group,
                         )
                     )
-                    self._stats.teams_to_update += 1
+                    self._stats.groups_to_update += 1
                 else:
-                    logger.debug(f'Team {team_slug} is up to date')
-                    self._stats.teams_up_to_date += 1
+                    logger.debug(f'idP Group {group_slug} is up to date')
+                    self._stats.groups_up_to_date += 1
 
-        logger.info(f'Found {len(team_diffs)} team differences')
-        return team_diffs
+        logger.info(f'Found {len(group_diffs)} team differences')
+        return group_diffs
 
     async def _apply_user_changes(
         self: SyncEngine, user_diffs: list[UserDiff]
@@ -476,38 +483,38 @@ class SyncEngine:
                 logger.error(f'Failed to apply user change {diff.action}: {e}')
                 self._stats.users_failed += 1
 
-    async def _apply_team_changes(
-        self: SyncEngine, team_diffs: list[TeamDiff]
+    async def _apply_group_changes(
+        self: SyncEngine, group_diffs: list[GroupDiff]
     ) -> None:
-        """Apply team changes to GitHub Enterprise."""
-        logger.info(f'Applying {len(team_diffs)} team changes')
+        """Apply idP Group changes to GitHub Enterprise."""
+        logger.info(f'Applying {len(group_diffs)} idP Group changes')
 
-        for diff in team_diffs:
+        for diff in group_diffs:
             try:
-                if diff.action == 'create' and diff.target_team:
+                if diff.action == 'create' and diff.target_group:
                     created_team = await self.github_client.create_group(
-                        diff.target_team
+                        diff.target_group
                     )
                     logger.info(f'Created team: {created_team.name}')
-                    self._stats.teams_created += 1
+                    self._stats.groups_created += 1
 
                 elif (
                     diff.action == 'update'
-                    and diff.existing_team
-                    and diff.target_team
+                    and diff.existing_group
+                    and diff.target_group
                 ):
                     updated_team = await self.github_client.update_group(
-                        str(diff.existing_team.id), diff.target_team
+                        str(diff.existing_group.id), diff.target_group
                     )
                     logger.info(f'Updated team: {updated_team.name}')
-                    self._stats.teams_updated += 1
+                    self._stats.groups_updated += 1
 
             except GitHubScimNotSupportedException as e:
                 logger.warning(f'Team operation {diff.action} skipped: {e}')
-                self._stats.teams_failed += 1
+                self._stats.groups_failed += 1
             except Exception as e:
                 logger.error(f'Failed to apply team change {diff.action}: {e}')
-                self._stats.teams_failed += 1
+                self._stats.groups_failed += 1
 
     def _preview_user_changes(
         self: SyncEngine, user_diffs: list[UserDiff]
@@ -523,17 +530,19 @@ class SyncEngine:
             elif diff.action == 'suspend' and diff.existing_scim_user:
                 logger.info(f'  SUSPEND: {diff.existing_scim_user.user_name}')
 
-    def _preview_team_changes(
-        self: SyncEngine, team_diffs: list[TeamDiff]
+    def _preview_group_changes(
+        self: SyncEngine, group_diffs: list[GroupDiff]
     ) -> None:
-        """Preview team changes for dry-run mode."""
-        logger.info(f'DRY RUN: Would apply {len(team_diffs)} team changes:')
+        """Preview idP Group changes for dry-run mode."""
+        logger.info(
+            f'DRY RUN: Would apply {len(group_diffs)} idP Group changes:'
+        )
 
-        for diff in team_diffs:
-            if diff.action == 'create' and diff.target_team:
-                logger.info(f'  CREATE TEAM: {diff.target_team.name}')
-            elif diff.action == 'update' and diff.target_team:
-                logger.info(f'  UPDATE TEAM: {diff.target_team.name}')
+        for diff in group_diffs:
+            if diff.action == 'create' and diff.target_group:
+                logger.info(f'  CREATE GROUP: {diff.target_group.name}')
+            elif diff.action == 'update' and diff.target_group:
+                logger.info(f'  UPDATE GROUP: {diff.target_group.name}')
 
     def _should_sync_user(self: SyncEngine, user: GoogleUser) -> bool:
         """Check if user should be synchronized."""
@@ -588,10 +597,10 @@ class SyncEngine:
             or existing.roles != target.roles
         )
 
-    def _teams_differ(
-        self: SyncEngine, existing: GitHubTeam, target: GitHubTeam
+    def _groups_differ(
+        self: SyncEngine, existing: GitHubGroup, target: GitHubGroup
     ) -> bool:
-        """Check if two GitHub teams have meaningful differences."""
+        """Check if two GitHub idP Groups have meaningful differences."""
         name_differs = existing.name != target.name
         description_differs = existing.description != target.description
         members_differ = set(existing.members) != set(target.members)
@@ -627,7 +636,7 @@ class SyncEngine:
 
         return username
 
-    def _ou_to_team_slug(self: SyncEngine, ou: GoogleOU) -> str:
-        """Convert Google OU to GitHub team slug."""
+    def _ou_to_group_slug(self: SyncEngine, ou: GoogleOU) -> str:
+        """Convert Google OU to GitHub idP Group slug."""
         # Use OU name, convert to lowercase and replace spaces
         return ou.name.lower().replace(' ', '-').replace('_', '-')

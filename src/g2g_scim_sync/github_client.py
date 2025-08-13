@@ -8,7 +8,7 @@ from typing import Optional
 import httpx
 
 from g2g_scim_sync.models import (
-    GitHubTeam,
+    GitHubGroup,
     ScimUser,
     GitHubScimNotSupportedException,
 )
@@ -17,37 +17,41 @@ logger = logging.getLogger(__name__)
 
 
 class GitHubScimClient:
-    """GitHub Enterprise SCIM API client for user and team management."""
+    """GitHub Enterprise SCIM API client for user and idP Group management."""
 
     def __init__(
         self: GitHubScimClient,
-        enterprise_url: str,
+        hostname: str,
         scim_token: str,
-        organization: str,
+        enterprise_account: str,
         timeout: float = 30.0,
     ) -> None:
         """Initialize the GitHub SCIM client.
 
         Args:
-            enterprise_url: GitHub Enterprise server URL
+            hostname: GitHub Enterprise hostname
             scim_token: SCIM API token with enterprise:scim scope
-            organization: GitHub organization name
+            enterprise_account: GitHub enterprise account name
             timeout: HTTP request timeout in seconds
         """
-        self.enterprise_url = enterprise_url.rstrip('/')
+        # Ensure hostname doesn't have protocol
+        if hostname.startswith(('http://', 'https://')):
+            hostname = hostname.split('://', 1)[1]
+
+        self.hostname = hostname.rstrip('/')
         self.scim_token = scim_token
-        self.organization = organization
+        self.enterprise_account = enterprise_account
         self.timeout = timeout
 
-        # Extract enterprise name from URL or use organization as fallback
-        if enterprise_url == 'https://github.com':
+        # Build URLs based on hostname
+        if hostname == 'github.com':
             # GitHub Enterprise Cloud
             self.base_url = 'https://api.github.com/scim/v2/enterprises'
-            self.enterprise_name = organization
+            self.enterprise_name = enterprise_account
         else:
             # GitHub Enterprise Server
-            self.base_url = f'{enterprise_url}/api/v3/scim/v2/enterprises'
-            self.enterprise_name = organization
+            self.base_url = f'https://{hostname}/api/v3/scim/v2/enterprises'
+            self.enterprise_name = enterprise_account
 
         self._client: Optional[httpx.AsyncClient] = None
 
@@ -252,21 +256,21 @@ class GitHubScimClient:
         self: GitHubScimClient,
         start_index: int = 1,
         count: int = 100,
-    ) -> list[GitHubTeam]:
-        """Get all SCIM groups (teams) from GitHub Enterprise.
+    ) -> list[GitHubGroup]:
+        """Get all SCIM groups (idP Groups) from GitHub Enterprise.
 
         Args:
             start_index: Starting index for pagination (1-based)
             count: Number of groups to retrieve per page
 
         Returns:
-            List of GitHub teams
+            List of GitHub idP Groups
 
         Raises:
             GitHubScimNotSupportedException: If SCIM Groups API is not
                 supported
         """
-        teams = []
+        groups = []
         current_start = start_index
 
         while True:
@@ -295,8 +299,8 @@ class GitHubScimClient:
                 break
 
             for group_data in resources:
-                team = self._parse_scim_group(group_data)
-                teams.append(team)
+                group = self._parse_scim_group(group_data)
+                groups.append(group)
 
             # Check if there are more results
             total_results = data.get('totalResults', 0)
@@ -305,19 +309,21 @@ class GitHubScimClient:
 
             current_start += len(resources)
 
-        logger.debug(f'Retrieved {len(teams)} teams from GitHub Enterprise')
-        return teams
+        logger.debug(
+            f'Retrieved {len(groups)} idP Groups from GitHub Enterprise'
+        )
+        return groups
 
     async def create_group(
-        self: GitHubScimClient, team: GitHubTeam
-    ) -> GitHubTeam:
-        """Create a new SCIM group (team).
+        self: GitHubScimClient, group: GitHubGroup
+    ) -> GitHubGroup:
+        """Create a new SCIM group (idP Group).
 
         Args:
-            team: GitHub team to create
+            group: GitHub idP Group to create
 
         Returns:
-            Created GitHub team with ID
+            Created GitHub idP Group with ID
 
         Raises:
             GitHubScimNotSupportedException: If SCIM Groups API is not
@@ -325,13 +331,13 @@ class GitHubScimClient:
         """
         # Get member SCIM user IDs by looking up usernames
         members = []
-        if team.members:
-            members = await self._get_member_scim_data(team.members)
+        if group.members:
+            members = await self._get_member_scim_data(group.members)
 
         group_data = {
             'schemas': ['urn:ietf:params:scim:schemas:core:2.0:Group'],
-            'displayName': team.name,
-            'externalId': team.slug,
+            'displayName': group.name,
+            'externalId': group.slug,
             'members': members,
         }
 
@@ -350,16 +356,16 @@ class GitHubScimClient:
             raise
 
         created_data = response.json()
-        created_team = self._parse_scim_group(created_data)
+        created_group = self._parse_scim_group(created_data)
 
-        logger.debug(f'Created team: {created_team.name}')
-        return created_team
+        logger.debug(f'Created idP Group: {created_group.name}')
+        return created_group
 
     async def update_group(
         self: GitHubScimClient,
         group_id: str,
-        team: GitHubTeam,
-    ) -> GitHubTeam:
+        group: GitHubGroup,
+    ) -> GitHubGroup:
         """Update an existing SCIM group (team).
 
         Args:
@@ -371,13 +377,13 @@ class GitHubScimClient:
         """
         # Get member SCIM user IDs by looking up usernames
         members = []
-        if team.members:
-            members = await self._get_member_scim_data(team.members)
+        if group.members:
+            members = await self._get_member_scim_data(group.members)
 
         group_data = {
             'schemas': ['urn:ietf:params:scim:schemas:core:2.0:Group'],
-            'displayName': team.name,
-            'externalId': team.slug,
+            'displayName': group.name,
+            'externalId': group.slug,
             'members': members,
         }
 
@@ -387,10 +393,10 @@ class GitHubScimClient:
         response.raise_for_status()
 
         updated_data = response.json()
-        updated_team = self._parse_scim_group(updated_data)
+        updated_group = self._parse_scim_group(updated_data)
 
-        logger.debug(f'Updated team: {updated_team.name}')
-        return updated_team
+        logger.debug(f'Updated idP Group: {updated_group.name}')
+        return updated_group
 
     async def _get_member_scim_data(
         self: GitHubScimClient, usernames: list[str]
@@ -457,7 +463,7 @@ class GitHubScimClient:
 
     def _parse_scim_group(
         self: GitHubScimClient, group_data: dict
-    ) -> GitHubTeam:
+    ) -> GitHubGroup:
         """Parse SCIM API group data into GitHubTeam model."""
         # Extract member usernames from SCIM members format
         members = []
@@ -465,7 +471,7 @@ class GitHubScimClient:
             if 'value' in member:
                 members.append(member['value'])
 
-        return GitHubTeam(
+        return GitHubGroup(
             id=group_data.get('id'),
             name=group_data['displayName'],
             slug=group_data.get(

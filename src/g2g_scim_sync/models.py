@@ -87,26 +87,28 @@ class ScimUser(BaseModel):
         )
 
 
-class GitHubTeam(BaseModel):
-    """GitHub team model."""
+class GitHubGroup(BaseModel):
+    """GitHub idP Group (team) model."""
 
-    id: Optional[str] = Field(default=None, description='GitHub team ID')
-    name: str = Field(..., description='Team name')
-    slug: str = Field(..., description='Team slug')
+    id: Optional[str] = Field(default=None, description='GitHub idP Group ID')
+    name: str = Field(..., description='idP Group name')
+    slug: str = Field(..., description='idP Group slug')
     description: Optional[str] = Field(
-        default=None, description='Team description'
+        default=None, description='idP Group description'
     )
-    privacy: str = Field(default='closed', description='Team privacy level')
+    privacy: str = Field(
+        default='closed', description='idP Group privacy level'
+    )
     members: list[str] = Field(
-        default_factory=list, description='Team member usernames'
+        default_factory=list, description='idP Group member usernames'
     )
 
     @classmethod
     def from_google_ou(
-        cls: type[GitHubTeam], google_ou: GoogleOU
-    ) -> GitHubTeam:
-        """Create GitHub team from Google OU."""
-        # Convert OU name to valid team slug
+        cls: type[GitHubGroup], google_ou: GoogleOU
+    ) -> GitHubGroup:
+        """Create GitHub idP Group from Google OU."""
+        # Convert OU name to valid group slug
         slug = google_ou.name.lower().replace(' ', '-').replace('_', '-')
 
         return cls(
@@ -146,7 +148,7 @@ class SyncSummary(BaseModel):
     )
     failed_operations: int = Field(..., description='Failed operations')
     users_processed: int = Field(..., description='Users processed')
-    teams_processed: int = Field(..., description='Teams processed')
+    groups_processed: int = Field(..., description='idP Groups processed')
     dry_run: bool = Field(..., description='Was this a dry run')
     start_time: datetime = Field(..., description='Sync start time')
     end_time: datetime = Field(..., description='Sync end time')
@@ -187,18 +189,24 @@ class SyncStats(BaseModel):
     )
     users_failed: int = Field(default=0, description='User operations failed')
 
-    teams_to_create: int = Field(default=0, description='Teams to be created')
-    teams_to_update: int = Field(default=0, description='Teams to be updated')
-    teams_up_to_date: int = Field(
-        default=0, description='Teams already current'
+    groups_to_create: int = Field(
+        default=0, description='idP Groups to be created'
     )
-    teams_created: int = Field(
-        default=0, description='Teams successfully created'
+    groups_to_update: int = Field(
+        default=0, description='idP Groups to be updated'
     )
-    teams_updated: int = Field(
-        default=0, description='Teams successfully updated'
+    groups_up_to_date: int = Field(
+        default=0, description='idP Groups already current'
     )
-    teams_failed: int = Field(default=0, description='Team operations failed')
+    groups_created: int = Field(
+        default=0, description='idP Groups successfully created'
+    )
+    groups_updated: int = Field(
+        default=0, description='idP Groups successfully updated'
+    )
+    groups_failed: int = Field(
+        default=0, description='idP Group operations failed'
+    )
 
     def __str__(self: SyncStats) -> str:
         """String representation of sync statistics."""
@@ -206,8 +214,8 @@ class SyncStats(BaseModel):
             f'Users: {self.users_created} created, '
             f'{self.users_updated} updated, '
             f'{self.users_suspended} suspended, {self.users_failed} failed | '
-            f'Teams: {self.teams_created} created, '
-            f'{self.teams_updated} updated, {self.teams_failed} failed'
+            f'idP Groups: {self.groups_created} created, '
+            f'{self.groups_updated} updated, {self.groups_failed} failed'
         )
 
 
@@ -228,18 +236,18 @@ class UserDiff(BaseModel):
     )
 
 
-class TeamDiff(BaseModel):
-    """Represents differences for a team sync operation."""
+class GroupDiff(BaseModel):
+    """Represents differences for an idP Group sync operation."""
 
     action: str = Field(..., description='Action to perform (create/update)')
     google_ou: Optional[GoogleOU] = Field(
         default=None, description='Source Google OU'
     )
-    existing_team: Optional[GitHubTeam] = Field(
-        default=None, description='Existing GitHub team'
+    existing_group: Optional[GitHubGroup] = Field(
+        default=None, description='Existing GitHub idP Group'
     )
-    target_team: Optional[GitHubTeam] = Field(
-        default=None, description='Target team state'
+    target_group: Optional[GitHubGroup] = Field(
+        default=None, description='Target idP Group state'
     )
 
 
@@ -250,8 +258,8 @@ class SyncResult(BaseModel):
     user_diffs: list[UserDiff] = Field(
         default_factory=list, description='User differences found'
     )
-    team_diffs: list[TeamDiff] = Field(
-        default_factory=list, description='Team differences found'
+    group_diffs: list[GroupDiff] = Field(
+        default_factory=list, description='idP Group differences found'
     )
     stats: SyncStats = Field(
         default_factory=SyncStats, description='Sync statistics'

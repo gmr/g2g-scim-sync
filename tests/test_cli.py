@@ -71,9 +71,9 @@ class TestSetupLogging:
                     'subject_email': 'admin@test.com',
                 },
                 'github': {
-                    'enterprise_url': 'https://github.test.com',
+                    'hostname': 'github.test.com',
                     'scim_token': 'token',
-                    'organization': 'test',
+                    'enterprise_account': 'test',
                 },
                 'logging': {'level': 'DEBUG'},
             }
@@ -105,9 +105,9 @@ class TestSetupLogging:
                     'subject_email': 'admin@test.com',
                 },
                 'github': {
-                    'enterprise_url': 'https://github.test.com',
+                    'hostname': 'github.test.com',
                     'scim_token': 'token',
-                    'organization': 'test',
+                    'enterprise_account': 'test',
                 },
                 'logging': {'level': 'INFO', 'file': str(log_file)},
             }
@@ -146,9 +146,9 @@ organizational_units = ["/Engineering"]
 subject_email = "admin@test.com"
 
 [github]
-enterprise_url = "https://github.test.com"
+hostname = "github.test.com"
 scim_token = "token"
-organization = "test"
+enterprise_account = "test"
 """
         config_file.write_text(config_content)
         return config_file

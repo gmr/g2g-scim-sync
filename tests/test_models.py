@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from g2g_scim_sync.models import (
-    GitHubTeam,
+    GitHubGroup,
     GoogleOU,
     GoogleUser,
     ScimUser,
@@ -217,12 +217,12 @@ class TestScimUser:
         assert user.external_id is None
 
 
-class TestGitHubTeam:
-    """Tests for GitHubTeam model."""
+class TestGitHubGroup:
+    """Tests for GitHubGroup model."""
 
-    def test_create_github_team(self) -> None:
-        """Test creating a GitHub team."""
-        team = GitHubTeam(
+    def test_create_github_group(self) -> None:
+        """Test creating a GitHub idP Group."""
+        group = GitHubGroup(
             id='team-uuid-123',
             name='Engineering',
             slug='engineering',
@@ -231,49 +231,49 @@ class TestGitHubTeam:
             members=['john', 'jane'],
         )
 
-        assert team.id == 'team-uuid-123'
-        assert team.name == 'Engineering'
-        assert team.slug == 'engineering'
-        assert team.description == 'Engineering team'
-        assert team.privacy == 'closed'
-        assert len(team.members) == 2
+        assert group.id == 'team-uuid-123'
+        assert group.name == 'Engineering'
+        assert group.slug == 'engineering'
+        assert group.description == 'Engineering team'
+        assert group.privacy == 'closed'
+        assert len(group.members) == 2
 
-    def test_github_team_from_google_ou(self) -> None:
-        """Test creating GitHub team from Google OU."""
+    def test_github_group_from_google_ou(self) -> None:
+        """Test creating GitHub idP Group from Google OU."""
         google_ou = GoogleOU(
             org_unit_path='/Engineering Team',
             name='Engineering Team',
             description='Engineering team members',
         )
 
-        team = GitHubTeam.from_google_ou(google_ou)
+        group = GitHubGroup.from_google_ou(google_ou)
 
-        assert team.name == 'Engineering Team'
-        assert team.slug == 'engineering-team'
-        assert team.description == 'Engineering team members'
-        assert team.members == []
-        assert team.privacy == 'closed'
-        assert team.id is None
+        assert group.name == 'Engineering Team'
+        assert group.slug == 'engineering-team'
+        assert group.description == 'Engineering team members'
+        assert group.members == []
+        assert group.privacy == 'closed'
+        assert group.id is None
 
-    def test_github_team_slug_generation(self) -> None:
-        """Test GitHub team slug generation from OU name."""
+    def test_github_group_slug_generation(self) -> None:
+        """Test GitHub idP Group slug generation from OU name."""
         google_ou = GoogleOU(
             org_unit_path='/Test_OU Name',
             name='Test_OU Name',
         )
 
-        team = GitHubTeam.from_google_ou(google_ou)
+        group = GitHubGroup.from_google_ou(google_ou)
 
-        assert team.slug == 'test-ou-name'
+        assert group.slug == 'test-ou-name'
 
-    def test_github_team_defaults(self) -> None:
-        """Test GitHub team with default values."""
-        team = GitHubTeam(name='Engineering', slug='engineering')
+    def test_github_group_defaults(self) -> None:
+        """Test GitHub idP Group with default values."""
+        group = GitHubGroup(name='Engineering', slug='engineering')
 
-        assert team.id is None
-        assert team.description is None
-        assert team.privacy == 'closed'
-        assert team.members == []
+        assert group.id is None
+        assert group.description is None
+        assert group.privacy == 'closed'
+        assert group.members == []
 
 
 class TestSyncOperation:
@@ -331,7 +331,7 @@ class TestSyncResult:
         assert result.error is None
         assert isinstance(result.timestamp, datetime)
         assert isinstance(result.user_diffs, list)
-        assert isinstance(result.team_diffs, list)
+        assert isinstance(result.group_diffs, list)
         assert isinstance(result.stats, SyncStats)
 
     def test_sync_result_with_error(self) -> None:
@@ -359,7 +359,7 @@ class TestSyncSummary:
             successful_operations=8,
             failed_operations=2,
             users_processed=5,
-            teams_processed=2,
+            groups_processed=2,
             dry_run=False,
             start_time=start_time,
             end_time=end_time,
@@ -370,7 +370,7 @@ class TestSyncSummary:
         assert summary.successful_operations == 8
         assert summary.failed_operations == 2
         assert summary.users_processed == 5
-        assert summary.teams_processed == 2
+        assert summary.groups_processed == 2
         assert summary.dry_run is False
         assert summary.success_rate == 80.0
 
@@ -381,7 +381,7 @@ class TestSyncSummary:
             successful_operations=0,
             failed_operations=0,
             users_processed=0,
-            teams_processed=0,
+            groups_processed=0,
             dry_run=True,
             start_time=datetime.now(),
             end_time=datetime.now(),
@@ -397,7 +397,7 @@ class TestSyncSummary:
             successful_operations=5,
             failed_operations=0,
             users_processed=3,
-            teams_processed=2,
+            groups_processed=2,
             dry_run=False,
             start_time=datetime.now(),
             end_time=datetime.now(),

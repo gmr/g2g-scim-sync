@@ -50,9 +50,11 @@ class GoogleConfig(BaseModel):
 class GitHubConfig(BaseModel):
     """GitHub Enterprise configuration."""
 
-    enterprise_url: str = Field(..., description='GitHub Enterprise base URL')
+    hostname: str = Field(..., description='GitHub Enterprise hostname')
     scim_token: str = Field(..., description='GitHub SCIM API token')
-    organization: str = Field(..., description='GitHub organization name')
+    enterprise_account: str = Field(
+        ..., description='GitHub enterprise account name'
+    )
     enterprise_owners: list[str] = Field(
         default_factory=list,
         description='List of user emails who should be enterprise owners',
@@ -70,14 +72,14 @@ class GitHubConfig(BaseModel):
         description='EMU suffix to append to usernames (e.g., "companyname")',
     )
 
-    @field_validator('enterprise_url')
+    @field_validator('hostname')
     @classmethod
-    def validate_enterprise_url(cls: type['GitHubConfig'], v: str) -> str:
-        """Validate GitHub Enterprise URL format."""
-        if not v.startswith(('http://', 'https://')):
-            raise ValueError(
-                'GitHub Enterprise URL must start with http:// or https://'
-            )
+    def validate_hostname(cls: type['GitHubConfig'], v: str) -> str:
+        """Validate GitHub hostname format."""
+        # Remove protocol if provided
+        if v.startswith(('http://', 'https://')):
+            v = v.split('://', 1)[1]
+        # Remove trailing slash
         return v.rstrip('/')
 
 
@@ -88,8 +90,9 @@ class SyncConfig(BaseModel):
         default=False,
         description='Delete suspended users instead of deactivating',
     )
-    create_teams: bool = Field(
-        default=True, description='Automatically create missing GitHub teams'
+    create_groups: bool = Field(
+        default=True,
+        description='Automatically create missing GitHub idP Groups (teams)',
     )
     flatten_ous: bool = Field(
         default=True,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+import tempfile
 from pathlib import Path
 from unittest import mock
 
@@ -906,3 +907,22 @@ class TestGoogleWorkspaceClient:
         assert user.creation_time == datetime(
             2024, 1, 1, 0, 0, tzinfo=timezone.utc
         )
+
+    def test_parse_datetime_complete(self) -> None:
+        """Test parsing complete datetime string."""
+        from datetime import datetime, timezone
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            client = self.create_client(Path(tmp_dir))
+            result = client._parse_datetime('2024-01-15T10:30:45.123Z')
+
+            assert result == datetime(
+                2024, 1, 15, 10, 30, 45, 123000, timezone.utc
+            )
+
+    def test_parse_datetime_none(self) -> None:
+        """Test parsing None datetime."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            client = self.create_client(Path(tmp_dir))
+            result = client._parse_datetime(None)
+            assert result is None

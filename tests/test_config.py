@@ -85,42 +85,47 @@ class TestGitHubConfig:
     def test_valid_config(self) -> None:
         """Test valid GitHub configuration."""
         config = GitHubConfig(
-            enterprise_url='https://github.company.com',
+            hostname='github.company.com',
             scim_token='ghes_token_here',  # noqa: S106
-            organization='company-org',
+            enterprise_account='company-org',
         )
 
-        assert config.enterprise_url == 'https://github.company.com'
+        assert config.hostname == 'github.company.com'
         assert config.scim_token == 'ghes_token_here'  # noqa: S105
-        assert config.organization == 'company-org'
+        assert config.enterprise_account == 'company-org'
 
-    def test_url_trailing_slash_removed(self) -> None:
-        """Test that trailing slash is removed from enterprise URL."""
+    def test_hostname_trailing_slash_removed(self) -> None:
+        """Test that trailing slash is removed from hostname."""
         config = GitHubConfig(
-            enterprise_url='https://github.company.com/',
+            hostname='github.company.com/',
             scim_token='token',  # noqa: S106
-            organization='org',
+            enterprise_account='org',
         )
 
-        assert config.enterprise_url == 'https://github.company.com'
+        assert config.hostname == 'github.company.com'
 
-    def test_invalid_url_scheme(self) -> None:
-        """Test validation error for invalid URL scheme."""
-        with pytest.raises(
-            ValueError, match='GitHub Enterprise URL must start with'
-        ):
-            GitHubConfig(
-                enterprise_url='ftp://github.company.com',
-                scim_token='token',  # noqa: S106
-                organization='org',
-            )
+    def test_hostname_protocol_stripping(self) -> None:
+        """Test that protocol is stripped from hostname."""
+        config = GitHubConfig(
+            hostname='https://github.company.com',
+            scim_token='token',  # noqa: S106
+            enterprise_account='org',
+        )
+        assert config.hostname == 'github.company.com'
+
+        config = GitHubConfig(
+            hostname='http://github.company.com',
+            scim_token='token',  # noqa: S106
+            enterprise_account='org',
+        )
+        assert config.hostname == 'github.company.com'
 
     def test_config_with_emu_suffix(self) -> None:
         """Test GitHub configuration with EMU username suffix."""
         config = GitHubConfig(
-            enterprise_url='https://github.company.com',
+            hostname='github.company.com',
             scim_token='ghes_token_here',  # noqa: S106
-            organization='company-org',
+            enterprise_account='company-org',
             emu_username_suffix='companyname',
         )
 
@@ -129,9 +134,9 @@ class TestGitHubConfig:
     def test_config_without_emu_suffix(self) -> None:
         """Test GitHub configuration without EMU username suffix (default)."""
         config = GitHubConfig(
-            enterprise_url='https://github.company.com',
+            hostname='github.company.com',
             scim_token='ghes_token_here',  # noqa: S106
-            organization='company-org',
+            enterprise_account='company-org',
         )
 
         assert config.emu_username_suffix is None
@@ -145,17 +150,17 @@ class TestSyncConfig:
         config = SyncConfig()
 
         assert config.delete_suspended is False
-        assert config.create_teams is True
+        assert config.create_groups is True
         assert config.flatten_ous is True
 
     def test_custom_values(self) -> None:
         """Test custom configuration values."""
         config = SyncConfig(
-            delete_suspended=True, create_teams=False, flatten_ous=False
+            delete_suspended=True, create_groups=False, flatten_ous=False
         )
 
         assert config.delete_suspended is True
-        assert config.create_teams is False
+        assert config.create_groups is False
         assert config.flatten_ous is False
 
 
@@ -203,13 +208,13 @@ class TestConfig:
                 'subject_email': 'admin@company.com',
             },
             'github': {
-                'enterprise_url': 'https://github.company.com',
+                'hostname': 'github.company.com',
                 'scim_token': 'token',  # noqa: S106
-                'organization': 'org',
+                'enterprise_account': 'org',
             },
             'sync': {
                 'delete_suspended': False,
-                'create_teams': True,
+                'create_groups': True,
                 'flatten_ous': True,
             },
             'logging': {'level': 'INFO', 'file': 'app.log'},
@@ -221,8 +226,8 @@ class TestConfig:
         config = Config.from_dict(config_dict)
 
         assert config.google.domain == 'company.com'
-        assert config.github.organization == 'org'
-        assert config.sync.create_teams is True
+        assert config.github.enterprise_account == 'org'
+        assert config.sync.create_groups is True
         assert config.logging.level == 'INFO'
 
     def test_from_file(self, tmp_path: Path) -> None:
@@ -240,13 +245,13 @@ organizational_units = ["/Engineering", "/Sales"]
 subject_email = "admin@company.com"
 
 [github]
-enterprise_url = "https://github.company.com"
+hostname = "github.company.com"
 scim_token = "token"
-organization = "org"
+enterprise_account = "org"
 
 [sync]
 delete_suspended = false
-create_teams = true
+create_groups = true
 flatten_ous = true
 
 [logging]
@@ -258,8 +263,8 @@ file = "app.log"
         config = Config.from_file(config_file)
 
         assert config.google.domain == 'company.com'
-        assert config.github.organization == 'org'
-        assert config.sync.create_teams is True
+        assert config.github.enterprise_account == 'org'
+        assert config.sync.create_groups is True
         assert config.logging.level == 'INFO'
 
     def test_from_file_not_found(self) -> None:
@@ -282,9 +287,9 @@ file = "app.log"
                 'subject_email': 'admin@company.com',
             },
             'github': {
-                'enterprise_url': 'https://github.company.com',
+                'hostname': 'github.company.com',
                 'scim_token': 'token',  # noqa: S106
-                'organization': 'org',
+                'enterprise_account': 'org',
             },
         }
 
@@ -292,7 +297,7 @@ file = "app.log"
 
         # Check defaults are applied
         assert config.sync.delete_suspended is False
-        assert config.sync.create_teams is True
+        assert config.sync.create_groups is True
         assert config.sync.flatten_ous is True
         assert config.logging.level == 'INFO'
         assert config.logging.file is None
