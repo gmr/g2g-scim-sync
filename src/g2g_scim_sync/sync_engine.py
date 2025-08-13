@@ -197,6 +197,12 @@ class SyncEngine:
         """
         logger.debug('Calculating flattened team differences from OU paths')
 
+        # Get GitHub users to create SCIM ID -> username mapping
+        github_users = await self._get_github_users()
+        scim_id_to_username = {
+            user.id: user.user_name for user in github_users if user.id
+        }
+
         # Create lookup maps
         github_teams_by_slug = {team.slug: team for team in github_teams}
 
@@ -243,8 +249,24 @@ class SyncEngine:
                     )
                     self._stats.teams_to_create += 1
             else:
+                # Convert existing team member IDs to usernames for comparison
+                existing_team_usernames = []
+                for member_id in existing_team.members:
+                    username = scim_id_to_username.get(member_id, member_id)
+                    existing_team_usernames.append(username)
+
+                # Create normalized existing team for comparison
+                normalized_existing = GitHubTeam(
+                    id=existing_team.id,
+                    name=existing_team.name,
+                    slug=existing_team.slug,
+                    description=existing_team.description
+                    or target_team.description,
+                    members=existing_team_usernames,
+                )
+
                 # Check if team needs to be updated
-                if self._teams_differ(existing_team, target_team):
+                if self._teams_differ(normalized_existing, target_team):
                     team_diffs.append(
                         TeamDiff(
                             action='update',
@@ -570,11 +592,21 @@ class SyncEngine:
         self: SyncEngine, existing: GitHubTeam, target: GitHubTeam
     ) -> bool:
         """Check if two GitHub teams have meaningful differences."""
-        return (
-            existing.name != target.name
-            or existing.description != target.description
-            or set(existing.members) != set(target.members)
-        )
+        name_differs = existing.name != target.name
+        description_differs = existing.description != target.description
+        members_differ = set(existing.members) != set(target.members)
+
+        if name_differs or description_differs or members_differ:
+            logger.debug(
+                f'Team {existing.slug} differs: '
+                f'name={name_differs} ({existing.name!r} vs {target.name!r}), '
+                f'description={description_differs} '
+                f'({existing.description!r} vs {target.description!r}), '
+                f'members={members_differ} '
+                f'(existing={existing.members!r}, target={target.members!r})'
+            )
+            return True
+        return False
 
     def _get_primary_email(self: SyncEngine, user: ScimUser) -> str:
         """Extract primary email from SCIM user."""
