@@ -76,7 +76,7 @@ g2g-scim-sync --config config.toml --delete-suspended
 g2g-scim-sync --config config.toml --organizational-units "/Engineering,/Sales"
 ```
 
-### Sync Individual Users Only  
+### Sync Individual Users Only
 ```bash
 g2g-scim-sync --config config.toml --individual-users "contractor@company.com,consultant@company.com"
 ```

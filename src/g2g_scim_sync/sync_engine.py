@@ -7,9 +7,10 @@ from typing import Optional
 
 from g2g_scim_sync.github_client import GitHubScimClient
 from g2g_scim_sync.google_client import GoogleWorkspaceClient
-from g2g_scim_sync.config import SyncConfig
+from g2g_scim_sync.config import SyncConfig, GitHubConfig
 from g2g_scim_sync.models import (
     GitHubTeam,
+    GitHubScimNotSupportedException,
     GoogleOU,
     GoogleUser,
     ScimUser,
@@ -30,6 +31,7 @@ class SyncEngine:
         google_client: GoogleWorkspaceClient,
         github_client: GitHubScimClient,
         config: SyncConfig,
+        github_config: GitHubConfig,
     ) -> None:
         """Initialize the synchronization engine.
 
@@ -37,10 +39,12 @@ class SyncEngine:
             google_client: Google Workspace Admin SDK client
             github_client: GitHub Enterprise SCIM API client
             config: Synchronization configuration
+            github_config: GitHub configuration for role assignments
         """
         self.google_client = google_client
         self.github_client = github_client
         self.config = config
+        self.github_config = github_config
         self._stats = SyncStats()
 
     async def synchronize(
@@ -66,12 +70,16 @@ class SyncEngine:
             # Use configured OUs if none specified
             sync_ous = ou_paths or []
             sync_individual = individual_users or []
-            
+
             if not sync_ous and not sync_individual:
-                raise ValueError('No OUs or individual users specified for synchronization')
-                
+                raise ValueError(
+                    'No OUs or individual users specified for synchronization'
+                )
+
             # Fetch data from both systems
-            google_users = await self._get_google_users(sync_ous, sync_individual)
+            google_users = await self._get_google_users(
+                sync_ous, sync_individual
+            )
             github_users = await self._get_github_users()
 
             # Calculate user differences
@@ -88,22 +96,33 @@ class SyncEngine:
             # Handle team synchronization if enabled
             team_diffs: list[TeamDiff] = []
             if self.config.create_teams:
-                github_teams = await self._get_github_teams()
+                try:
+                    github_teams = await self._get_github_teams()
 
-                if self.config.flatten_ous:
-                    team_diffs = await self._calculate_flattened_team_diffs(
-                        google_users, github_teams
-                    )
-                else:
-                    google_ous = await self._get_google_ous(sync_ous)
-                    team_diffs = await self._calculate_team_diffs(
-                        google_ous, github_teams, google_users
-                    )
+                    if self.config.flatten_ous:
+                        team_diffs = (
+                            await self._calculate_flattened_team_diffs(
+                                google_users, github_teams
+                            )
+                        )
+                    else:
+                        google_ous = await self._get_google_ous(sync_ous)
+                        team_diffs = await self._calculate_team_diffs(
+                            google_ous, github_teams, google_users
+                        )
 
-                if not dry_run:
-                    await self._apply_team_changes(team_diffs)
-                else:
-                    self._preview_team_changes(team_diffs)
+                    if not dry_run:
+                        await self._apply_team_changes(team_diffs)
+                    else:
+                        self._preview_team_changes(team_diffs)
+
+                except GitHubScimNotSupportedException as e:
+                    logger.warning(f'Team operations disabled: {e}')
+                    logger.info('Continuing with user provisioning only')
+                    logger.info(
+                        'Consider setting create_teams=false in configuration '
+                        'to skip team operations'
+                    )
 
             logger.info(f'Synchronization completed: {self._stats}')
             return SyncResult(
@@ -206,11 +225,9 @@ class SyncEngine:
 
             # Create target team with hierarchical name
             target_team = GitHubTeam(
-                name=team_slug.replace('-', ' ').title(),
+                name=team_slug,
                 slug=team_slug,
-                description=(
-                    f'Team for {team_slug.replace("-", " ").title()} OU'
-                ),
+                description=(f'Team for {team_slug.replace("-", " ")} OU'),
                 members=list(member_usernames),
             )
 
@@ -358,7 +375,7 @@ class SyncEngine:
                     logger.debug(f'No GitHub user for OU user {email}')
 
             target_team = GitHubTeam(
-                name=google_ou.name,
+                name=team_slug,
                 slug=team_slug,
                 description=google_ou.description,
                 members=github_members,
@@ -463,6 +480,9 @@ class SyncEngine:
                     logger.info(f'Updated team: {updated_team.name}')
                     self._stats.teams_updated += 1
 
+            except GitHubScimNotSupportedException as e:
+                logger.warning(f'Team operation {diff.action} skipped: {e}')
+                self._stats.teams_failed += 1
             except Exception as e:
                 logger.error(f'Failed to apply team change {diff.action}: {e}')
                 self._stats.teams_failed += 1
@@ -498,8 +518,29 @@ class SyncEngine:
         # Always sync users, action logic handles suspended state
         return True
 
+    def _determine_user_roles(self: SyncEngine, email: str) -> list[dict]:
+        """Determine GitHub Enterprise roles for a user based on their email.
+
+        Args:
+            email: User's email address
+
+        Returns:
+            List of role dictionaries for SCIM API
+        """
+        if email in self.github_config.enterprise_owners:
+            return [{'value': 'enterprise_owner', 'primary': True}]
+        elif email in self.github_config.billing_managers:
+            return [{'value': 'billing_manager', 'primary': True}]
+        elif email in self.github_config.guest_collaborators:
+            return [{'value': 'guest_collaborator', 'primary': True}]
+        else:
+            return [{'value': 'user', 'primary': True}]
+
     def _google_user_to_scim(self: SyncEngine, user: GoogleUser) -> ScimUser:
         """Convert Google User to SCIM User format."""
+        # Determine user role based on email
+        roles = self._determine_user_roles(user.primary_email)
+
         return ScimUser(
             user_name=self._email_to_username(user.primary_email),
             emails=[{'value': user.primary_email, 'primary': True}],
@@ -510,6 +551,7 @@ class SyncEngine:
             },
             active=not user.suspended,
             external_id=user.id,
+            roles=roles,
         )
 
     def _users_differ(
@@ -521,6 +563,7 @@ class SyncEngine:
             or existing.emails != target.emails
             or existing.name != target.name
             or existing.active != target.active
+            or existing.roles != target.roles
         )
 
     def _teams_differ(

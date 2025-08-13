@@ -7,7 +7,11 @@ from typing import Optional
 
 import httpx
 
-from g2g_scim_sync.models import GitHubTeam, ScimUser
+from g2g_scim_sync.models import (
+    GitHubTeam,
+    ScimUser,
+    GitHubScimNotSupportedException,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -257,19 +261,33 @@ class GitHubScimClient:
 
         Returns:
             List of GitHub teams
+
+        Raises:
+            GitHubScimNotSupportedException: If SCIM Groups API is not
+                supported
         """
         teams = []
         current_start = start_index
 
         while True:
-            response = await self.get_client().get(
-                '/Groups',
-                params={
-                    'startIndex': current_start,
-                    'count': count,
-                },
-            )
-            response.raise_for_status()
+            try:
+                response = await self.get_client().get(
+                    '/Groups',
+                    params={
+                        'startIndex': current_start,
+                        'count': count,
+                    },
+                )
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    raise GitHubScimNotSupportedException(
+                        'SCIM Groups API is not available for this GitHub '
+                        'Enterprise instance. Groups may be managed through '
+                        'your identity provider instead of the SCIM API.'
+                    ) from e
+                raise
+
             data = response.json()
 
             resources = data.get('Resources', [])
@@ -300,22 +318,36 @@ class GitHubScimClient:
 
         Returns:
             Created GitHub team with ID
+
+        Raises:
+            GitHubScimNotSupportedException: If SCIM Groups API is not
+                supported
         """
+        # Get member SCIM user IDs by looking up usernames
+        members = []
+        if team.members:
+            members = await self._get_member_scim_data(team.members)
+
         group_data = {
             'schemas': ['urn:ietf:params:scim:schemas:core:2.0:Group'],
             'displayName': team.name,
             'externalId': team.slug,
-            'members': [
-                {
-                    'value': username,
-                    'display': username,
-                }
-                for username in team.members
-            ],
+            'members': members,
         }
 
-        response = await self.get_client().post('/Groups', json=group_data)
-        response.raise_for_status()
+        try:
+            response = await self.get_client().post('/Groups', json=group_data)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise GitHubScimNotSupportedException(
+                    'SCIM Groups API is not available for this GitHub '
+                    'Enterprise instance. This may be because groups are '
+                    'managed through your identity provider instead of the '
+                    'SCIM API. User provisioning will continue without team '
+                    'creation.'
+                ) from e
+            raise
 
         created_data = response.json()
         created_team = self._parse_scim_group(created_data)
@@ -337,17 +369,16 @@ class GitHubScimClient:
         Returns:
             Updated GitHub team
         """
+        # Get member SCIM user IDs by looking up usernames
+        members = []
+        if team.members:
+            members = await self._get_member_scim_data(team.members)
+
         group_data = {
             'schemas': ['urn:ietf:params:scim:schemas:core:2.0:Group'],
             'displayName': team.name,
             'externalId': team.slug,
-            'members': [
-                {
-                    'value': username,
-                    'display': username,
-                }
-                for username in team.members
-            ],
+            'members': members,
         }
 
         response = await self.get_client().put(
@@ -361,6 +392,41 @@ class GitHubScimClient:
         logger.info(f'Updated team: {updated_team.name}')
         return updated_team
 
+    async def _get_member_scim_data(
+        self: GitHubScimClient, usernames: list[str]
+    ) -> list[dict[str, str]]:
+        """Convert usernames to SCIM member format with user IDs.
+
+        Args:
+            usernames: List of GitHub usernames
+
+        Returns:
+            List of member objects with SCIM user ID, $ref, and displayName
+        """
+        members = []
+
+        # Get all users to build username -> SCIM ID mapping
+        all_users = await self.get_users()
+        username_to_scim_id = {
+            user.user_name: user.id for user in all_users if user.id
+        }
+
+        for username in usernames:
+            scim_user_id = username_to_scim_id.get(username)
+            if scim_user_id:
+                member = {
+                    'value': scim_user_id,
+                    '$ref': f'https://api.github.com/scim/v2/enterprises/{self.enterprise_name}/Users/{scim_user_id}',
+                    'displayName': username,
+                }
+                members.append(member)
+            else:
+                logger.warning(
+                    f'Could not find SCIM user ID for username: {username}'
+                )
+
+        return members
+
     def _parse_scim_user(self: GitHubScimClient, user_data: dict) -> ScimUser:
         """Parse SCIM API user data into ScimUser model."""
         return ScimUser(
@@ -370,6 +436,7 @@ class GitHubScimClient:
             name=user_data['name'],
             active=user_data.get('active', True),
             external_id=user_data.get('externalId'),
+            roles=user_data.get('roles', [{'value': 'user', 'primary': True}]),
         )
 
     def _scim_user_to_dict(self: GitHubScimClient, user: ScimUser) -> dict:
@@ -380,6 +447,7 @@ class GitHubScimClient:
             'emails': user.emails,
             'name': user.name,
             'active': user.active,
+            'roles': user.roles,
         }
 
         if user.external_id:
@@ -398,7 +466,7 @@ class GitHubScimClient:
                 members.append(member['value'])
 
         return GitHubTeam(
-            id=int(group_data['id']) if group_data.get('id') else None,
+            id=group_data.get('id'),
             name=group_data['displayName'],
             slug=group_data.get(
                 'externalId', group_data['displayName'].lower()

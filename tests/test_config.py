@@ -48,7 +48,10 @@ class TestGoogleConfig:
             subject_email='admin@company.com',
         )
 
-        assert config.individual_users == ['john@company.com', 'jane@company.com']
+        assert config.individual_users == [
+            'john@company.com',
+            'jane@company.com',
+        ]
 
     def test_nonexistent_service_account_file(self) -> None:
         """Test validation error for nonexistent service account file."""

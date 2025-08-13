@@ -58,6 +58,10 @@ class ScimUser(BaseModel):
     external_id: Optional[str] = Field(
         default=None, description='External identity reference'
     )
+    roles: list[dict] = Field(
+        default_factory=lambda: [{'value': 'user', 'primary': True}],
+        description='User roles in enterprise',
+    )
 
     @classmethod
     def from_google_user(
@@ -79,14 +83,14 @@ class ScimUser(BaseModel):
                 'formatted': google_user.full_name,
             },
             active=not google_user.suspended,
-            external_id=google_user.id,
+            external_id=google_user.primary_email.split('@')[0],
         )
 
 
 class GitHubTeam(BaseModel):
     """GitHub team model."""
 
-    id: Optional[int] = Field(default=None, description='GitHub team ID')
+    id: Optional[str] = Field(default=None, description='GitHub team ID')
     name: str = Field(..., description='Team name')
     slug: str = Field(..., description='Team slug')
     description: Optional[str] = Field(
@@ -259,3 +263,9 @@ class SyncResult(BaseModel):
     timestamp: datetime = Field(
         default_factory=datetime.now, description='Sync completion timestamp'
     )
+
+
+class GitHubScimNotSupportedException(Exception):
+    """Exception when GitHub Enterprise Server doesn't support SCIM Groups."""
+
+    pass

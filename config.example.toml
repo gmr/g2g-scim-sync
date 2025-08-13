@@ -27,11 +27,21 @@ scim_token = "ghes_token_here"
 # Target GitHub organization
 organization = "company-org"
 
+# List of user emails who should be assigned the enterprise_owner role
+enterprise_owners = ["ceo@company.com", "cto@company.com"]
+
+# List of user emails who should be assigned the billing_manager role
+billing_managers = ["finance@company.com", "billing@company.com"]
+
+# List of user emails who should be assigned the guest_collaborator role
+guest_collaborators = ["contractor@external.com", "consultant@partner.com"]
+
 [sync]
 # Delete suspended users instead of just deactivating them
 delete_suspended = false
 
 # Automatically create missing GitHub teams
+# Set to false if your GitHub Enterprise instance manages teams through IdP instead of SCIM API
 create_teams = true
 
 # Flatten nested Organizational Units into individual GitHub teams

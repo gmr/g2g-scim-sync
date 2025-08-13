@@ -26,6 +26,9 @@ def setup_logging(config: Config) -> None:
     logger = logging.getLogger()
     logger.setLevel(level)
 
+    for name in {'googleapiclient', 'httpcore', 'httpx', 'urllib3'}:
+        logging.getLogger(name).setLevel(logging.CRITICAL)
+
     # Console handler
     console_handler = logging.StreamHandler()
     console_handler.setLevel(level)
@@ -62,6 +65,7 @@ async def run_sync(config: Config, dry_run: bool) -> None:
             google_client=google_client,
             github_client=github_client,
             config=config.sync,
+            github_config=config.github,
         )
 
         # Run synchronization

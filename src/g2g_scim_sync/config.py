@@ -53,6 +53,18 @@ class GitHubConfig(BaseModel):
     enterprise_url: str = Field(..., description='GitHub Enterprise base URL')
     scim_token: str = Field(..., description='GitHub SCIM API token')
     organization: str = Field(..., description='GitHub organization name')
+    enterprise_owners: list[str] = Field(
+        default_factory=list,
+        description='List of user emails who should be enterprise owners',
+    )
+    billing_managers: list[str] = Field(
+        default_factory=list,
+        description='List of user emails who should be billing managers',
+    )
+    guest_collaborators: list[str] = Field(
+        default_factory=list,
+        description='List of user emails who should be guest collaborators',
+    )
 
     @field_validator('enterprise_url')
     @classmethod

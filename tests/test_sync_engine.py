@@ -7,7 +7,7 @@ from unittest import mock
 
 import pytest
 
-from g2g_scim_sync.config import SyncConfig
+from g2g_scim_sync.config import SyncConfig, GitHubConfig
 from g2g_scim_sync.models import (
     GitHubTeam,
     GoogleOU,
@@ -32,10 +32,19 @@ class TestSyncEngine:
             create_teams=True,
             flatten_ous=False,
         )
+        self.github_config = GitHubConfig(
+            enterprise_url='https://github.company.com',
+            scim_token='token',  # noqa: S106
+            organization='org',
+            enterprise_owners=['owner@test.com'],
+            billing_managers=['billing@test.com'],
+            guest_collaborators=['guest@test.com'],
+        )
         self.engine = SyncEngine(
             google_client=self.mock_google_client,
             github_client=self.mock_github_client,
             config=self.config,
+            github_config=self.github_config,
         )
 
     def create_google_user(
@@ -213,7 +222,10 @@ class TestSyncEngine:
 
         # Verify error
         assert result.success is False
-        assert 'No OUs or individual users specified for synchronization' in result.error
+        assert (
+            'No OUs or individual users specified for synchronization'
+            in result.error
+        )
 
     @pytest.mark.asyncio
     async def test_calculate_user_diffs_create(self) -> None:
@@ -327,6 +339,48 @@ class TestSyncEngine:
         assert scim_user.name['familyName'] == 'Doe'
         assert scim_user.active is True
         assert scim_user.external_id == google_user.id
+        assert scim_user.roles == [{'value': 'user', 'primary': True}]
+
+    def test_determine_user_roles(self) -> None:
+        """Test role assignment based on email configuration."""
+        # Test enterprise owner
+        roles = self.engine._determine_user_roles('owner@test.com')
+        assert roles == [{'value': 'enterprise_owner', 'primary': True}]
+
+        # Test billing manager
+        roles = self.engine._determine_user_roles('billing@test.com')
+        assert roles == [{'value': 'billing_manager', 'primary': True}]
+
+        # Test guest collaborator
+        roles = self.engine._determine_user_roles('guest@test.com')
+        assert roles == [{'value': 'guest_collaborator', 'primary': True}]
+
+        # Test default user role
+        roles = self.engine._determine_user_roles('regular@test.com')
+        assert roles == [{'value': 'user', 'primary': True}]
+
+    def test_google_user_to_scim_with_roles(self) -> None:
+        """Test Google user to SCIM conversion with different roles."""
+        # Test enterprise owner
+        google_user = self.create_google_user('owner@test.com')
+        scim_user = self.engine._google_user_to_scim(google_user)
+        assert scim_user.roles == [
+            {'value': 'enterprise_owner', 'primary': True}
+        ]
+
+        # Test billing manager
+        google_user = self.create_google_user('billing@test.com')
+        scim_user = self.engine._google_user_to_scim(google_user)
+        assert scim_user.roles == [
+            {'value': 'billing_manager', 'primary': True}
+        ]
+
+        # Test guest collaborator
+        google_user = self.create_google_user('guest@test.com')
+        scim_user = self.engine._google_user_to_scim(google_user)
+        assert scim_user.roles == [
+            {'value': 'guest_collaborator', 'primary': True}
+        ]
 
     def test_users_differ(self) -> None:
         """Test user difference detection."""
