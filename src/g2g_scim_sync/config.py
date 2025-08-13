@@ -1,15 +1,10 @@
 """Configuration management for g2g-scim-bridge."""
 
-import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
 
 class GoogleConfig(BaseModel):
